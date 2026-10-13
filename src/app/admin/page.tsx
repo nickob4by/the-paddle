@@ -185,10 +185,18 @@ export default function AdminPage() {
     }
   };
 
+  // Helper to format local date YYYY-MM-DD (immune to UTC date shift)
+  const getLocalDateStr = (d: Date = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   useEffect(() => {
     const today = new Date();
     setCurrentDate(today);
-    setTodayStr(today.toISOString().split('T')[0]);
+    setTodayStr(getLocalDateStr(today));
     const saved = localStorage.getItem('paddle_admin_logged_in');
     if (saved === 'true') {
       setIsAuthenticated(true);
@@ -374,6 +382,8 @@ export default function AdminPage() {
         if (verifyingBooking && verifyingBooking.id === bookingId) {
           setVerifyingBooking(data.booking);
         }
+        // Re-sync all state and financial totals
+        fetchData(true);
         return data.booking;
       }
     } catch (err) {
@@ -897,15 +907,15 @@ export default function AdminPage() {
     if (!currentDate) return '1970-01-01';
     const d = new Date(currentDate.getTime());
     if (timeFilter === 'TODAY') {
-      return todayStr || d.toISOString().split('T')[0];
+      return todayStr || getLocalDateStr(d);
     }
     if (timeFilter === 'WEEK') {
       d.setDate(d.getDate() - 6); // Last 7 days
-      return d.toISOString().split('T')[0];
+      return getLocalDateStr(d);
     }
     if (timeFilter === 'MONTH') {
       d.setDate(1); // Start of current month
-      return d.toISOString().split('T')[0];
+      return getLocalDateStr(d);
     }
     return '1970-01-01'; // ALL
   };
@@ -915,9 +925,16 @@ export default function AdminPage() {
   // Filtered Bookings for the selected timeframe
   const analyticsBookings = bookings.filter((b) => {
     if (b.bookingStatus === 'CANCELLED') return false;
-    if (timeFilter === 'TODAY') return todayStr ? b.bookingDate === todayStr : true;
+    
+    // Check both reservation slot date and transaction created date in local time
+    const bDate = b.bookingDate || '';
+    const cDate = (b.createdAt || '').split('T')[0] || '';
+
+    if (timeFilter === 'TODAY') {
+      return todayStr ? (bDate === todayStr || cDate === todayStr) : true;
+    }
     if (timeFilter === 'ALL') return true;
-    return b.bookingDate >= filterStartDateStr;
+    return (bDate >= filterStartDateStr || cDate >= filterStartDateStr);
   });
 
   // Filtered Store Orders for the selected timeframe
@@ -930,67 +947,107 @@ export default function AdminPage() {
   });
 
   // Aggregated Revenues for the timeframe
-  const analyticsCourtRev = analyticsBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-  const analyticsStoreRev = analyticsOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const analyticsCourtRev = analyticsBookings.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const analyticsStoreRev = analyticsOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
   const analyticsTotalRev = analyticsCourtRev + analyticsStoreRev;
 
   // Payment method breakdowns (Cash vs GCash)
-  const analyticsCashCourt = analyticsBookings.filter((b) => b.paymentMethod === 'CASH').reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-  const analyticsCashStore = analyticsOrders.filter((o) => o.paymentMethod === 'CASH').reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const analyticsCashCourt = analyticsBookings.filter((b) => b.paymentMethod === 'CASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const analyticsCashStore = analyticsOrders.filter((o) => o.paymentMethod === 'CASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
   const analyticsCashTotal = analyticsCashCourt + analyticsCashStore;
 
-  const analyticsGcashCourt = analyticsBookings.filter((b) => b.paymentMethod === 'GCASH').reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-  const analyticsGcashStore = analyticsOrders.filter((o) => o.paymentMethod === 'GCASH').reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const analyticsGcashCourt = analyticsBookings.filter((b) => b.paymentMethod === 'GCASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const analyticsGcashStore = analyticsOrders.filter((o) => o.paymentMethod === 'GCASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
   const analyticsGcashTotal = analyticsGcashCourt + analyticsGcashStore;
 
-  // 7-Day or Hourly Chart Series generator
-  const chartDays: Array<{ label: string; dateStr: string; courtRev: number; storeRev: number; total: number }> = [];
+  // Chart Series generator (Responsive for mobile screens)
+  const chartDays: Array<{ label: string; mobileLabel: string; dateStr: string; courtRev: number; storeRev: number; total: number }> = [];
   if (timeFilter === 'TODAY') {
-    // Show 6 blocks of 4-hour intervals for today (e.g. 6AM-9AM, 10AM-1PM, 2PM-5PM, 6PM-9PM, 10PM-Midnight)
+    // 5 intervals for today
     const intervals = [
-      { label: '6AM-9AM', startH: 6, endH: 9 },
-      { label: '10AM-1PM', startH: 10, endH: 13 },
-      { label: '2PM-5PM', startH: 14, endH: 17 },
-      { label: '6PM-9PM', startH: 18, endH: 21 },
-      { label: '10PM-12AM', startH: 22, endH: 24 }
+      { label: '6AM-9AM', mobileLabel: '6-9a', startH: 6, endH: 9 },
+      { label: '10AM-1PM', mobileLabel: '10-1p', startH: 10, endH: 13 },
+      { label: '2PM-5PM', mobileLabel: '2-5p', startH: 14, endH: 17 },
+      { label: '6PM-9PM', mobileLabel: '6-9p', startH: 18, endH: 21 },
+      { label: '10PM-12AM', mobileLabel: '10-12a', startH: 22, endH: 24 }
     ];
-    intervals.forEach(({ label, startH, endH }) => {
+    intervals.forEach(({ label, mobileLabel, startH, endH }) => {
       const cRev = analyticsBookings
         .filter((b) => {
           const h = parseInt((b.startTime || '0').split(':')[0], 10);
           return h >= startH && h <= endH;
         })
-        .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+        .reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
 
       const sRev = analyticsOrders
         .filter((o) => {
           if (!o.createdAt) return false;
-          // Extract hour from ISO string without calling new Date()
           const timePart = o.createdAt.split('T')[1] || '';
           const h = parseInt(timePart.split(':')[0] || '0', 10);
           return h >= startH && h <= endH;
         })
-        .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+        .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
 
-      chartDays.push({ label, dateStr: label, courtRev: cRev, storeRev: sRev, total: cRev + sRev });
+      chartDays.push({ label, mobileLabel, dateStr: label, courtRev: cRev, storeRev: sRev, total: cRev + sRev });
+    });
+  } else if (timeFilter === 'MONTH' && currentDate) {
+    // 4 Weeks of the current month (fits mobile screen perfectly)
+    const curYear = currentDate.getFullYear();
+    const curMonth = currentDate.getMonth();
+    const lastDayOfMonth = new Date(curYear, curMonth + 1, 0).getDate();
+
+    const weeks = [
+      { label: 'Days 1-7', mobileLabel: 'Wk 1', startDay: 1, endDay: 7 },
+      { label: 'Days 8-14', mobileLabel: 'Wk 2', startDay: 8, endDay: 14 },
+      { label: 'Days 15-21', mobileLabel: 'Wk 3', startDay: 15, endDay: 21 },
+      { label: `Days 22-${lastDayOfMonth}`, mobileLabel: 'Wk 4', startDay: 22, endDay: lastDayOfMonth }
+    ];
+
+    weeks.forEach(({ label, mobileLabel, startDay, endDay }) => {
+      const cRev = bookings
+        .filter((b) => {
+          if (b.bookingStatus === 'CANCELLED') return false;
+          const targetDate = b.bookingDate || (b.createdAt || '').split('T')[0];
+          if (!targetDate) return false;
+          const [by, bm, bd] = targetDate.split('-').map(Number);
+          return by === curYear && bm === curMonth + 1 && bd >= startDay && bd <= endDay;
+        })
+        .reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+
+      const sRev = posOrders
+        .filter((o) => {
+          if (!o.createdAt) return false;
+          const targetDate = o.createdAt.split('T')[0];
+          const [oy, om, od] = targetDate.split('-').map(Number);
+          return oy === curYear && om === curMonth + 1 && od >= startDay && od <= endDay;
+        })
+        .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+
+      chartDays.push({ label, mobileLabel, dateStr: label, courtRev: cRev, storeRev: sRev, total: cRev + sRev });
     });
   } else if (currentDate) {
-    // Generate past 7 days bars safely using currentDate
+    // Past 7 days (WEEK and ALL)
     for (let i = 6; i >= 0; i--) {
       const d = new Date(currentDate.getTime());
       d.setDate(d.getDate() - i);
-      const dStr = d.toISOString().split('T')[0];
+      const dStr = getLocalDateStr(d);
       const shortLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' });
+      const mobileLabel = `${d.toLocaleDateString('en-US', { weekday: 'narrow' })} ${d.getDate()}`;
 
       const cRev = bookings
-        .filter((b) => b.bookingDate === dStr && b.bookingStatus !== 'CANCELLED')
-        .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+        .filter((b) => {
+          if (b.bookingStatus === 'CANCELLED') return false;
+          const bDate = b.bookingDate;
+          const cDate = (b.createdAt || '').split('T')[0];
+          return bDate === dStr || cDate === dStr;
+        })
+        .reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
 
       const sRev = posOrders
         .filter((o) => o.createdAt && o.createdAt.startsWith(dStr))
-        .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+        .reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
 
-      chartDays.push({ label: shortLabel, dateStr: dStr, courtRev: cRev, storeRev: sRev, total: cRev + sRev });
+      chartDays.push({ label: shortLabel, mobileLabel, dateStr: dStr, courtRev: cRev, storeRev: sRev, total: cRev + sRev });
     }
   }
 
@@ -1389,42 +1446,45 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                {/* Bar Graph Canvas */}
-                <div className="h-44 sm:h-48 w-full rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4 flex items-end justify-between gap-2 sm:gap-4">
-                  {chartDays.map((bar, idx) => {
-                    const courtHeight = maxChartBar > 0 ? (bar.courtRev / maxChartBar) * 100 : 0;
-                    const storeHeight = maxChartBar > 0 ? (bar.storeRev / maxChartBar) * 100 : 0;
+                {/* Bar Graph Canvas with mobile containment */}
+                <div className="w-full overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-700 pb-1">
+                  <div className="h-44 sm:h-48 min-w-[280px] w-full rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-2 sm:p-4 flex items-end justify-between gap-1 sm:gap-4">
+                    {chartDays.map((bar, idx) => {
+                      const courtHeight = maxChartBar > 0 ? (bar.courtRev / maxChartBar) * 100 : 0;
+                      const storeHeight = maxChartBar > 0 ? (bar.storeRev / maxChartBar) * 100 : 0;
 
-                    return (
-                      <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
-                        {/* Hover Tooltip */}
-                        <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950 text-white text-[10px] rounded-lg px-2 py-1 mb-1 pointer-events-none whitespace-nowrap shadow-lg z-10 font-mono">
-                          ₱{bar.total.toLocaleString()}
+                      return (
+                        <div key={idx} className="flex-1 min-w-0 flex flex-col items-center h-full justify-end group px-0.5">
+                          {/* Hover Tooltip */}
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950 text-white text-[10px] rounded-lg px-1.5 py-0.5 mb-1 pointer-events-none whitespace-nowrap shadow-lg z-10 font-mono">
+                            ₱{bar.total.toLocaleString()}
+                          </div>
+
+                          {/* Stacked / Grouped Bars */}
+                          <div className="w-full max-w-[26px] sm:max-w-[34px] flex items-end justify-center gap-0.5 sm:gap-1 h-[75%]">
+                            {/* Court Bar */}
+                            <div
+                              style={{ height: `${Math.max(courtHeight, 4)}%` }}
+                              className="w-1/2 bg-lime-500 rounded-t-md transition-all duration-300 group-hover:brightness-110"
+                              title={`Courts: ₱${bar.courtRev}`}
+                            />
+                            {/* Store Bar */}
+                            <div
+                              style={{ height: `${Math.max(storeHeight, 4)}%` }}
+                              className="w-1/2 bg-teal-500 rounded-t-md transition-all duration-300 group-hover:brightness-110"
+                              title={`Store: ₱${bar.storeRev}`}
+                            />
+                          </div>
+
+                          {/* X-Axis Label */}
+                          <span className="text-[9px] sm:text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1.5 sm:mt-2 truncate w-full text-center block">
+                            <span className="inline sm:hidden">{bar.mobileLabel}</span>
+                            <span className="hidden sm:inline">{bar.label}</span>
+                          </span>
                         </div>
-
-                        {/* Stacked / Grouped Bars */}
-                        <div className="w-full max-w-[32px] flex items-end justify-center gap-0.5 sm:gap-1 h-[75%]">
-                          {/* Court Bar */}
-                          <div
-                            style={{ height: `${Math.max(courtHeight, 4)}%` }}
-                            className="w-1/2 bg-lime-500 rounded-t-md transition-all duration-300 group-hover:brightness-110"
-                            title={`Courts: ₱${bar.courtRev}`}
-                          />
-                          {/* Store Bar */}
-                          <div
-                            style={{ height: `${Math.max(storeHeight, 4)}%` }}
-                            className="w-1/2 bg-teal-500 rounded-t-md transition-all duration-300 group-hover:brightness-110"
-                            title={`Store: ₱${bar.storeRev}`}
-                          />
-                        </div>
-
-                        {/* X-Axis Label */}
-                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-2 truncate w-full text-center">
-                          {bar.label}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
