@@ -25,7 +25,9 @@ export default function HomePage() {
     totalAmount: number;
   } | null>(null);
 
-  const [operatingHoursText, setOperatingHoursText] = useState('Open Daily • 6:00 AM – 10:00 PM');
+  const [operatingHoursText, setOperatingHoursText] = useState<string>('');
+  const [courtOpenTime, setCourtOpenTime] = useState<string>('');
+  const [courtCloseTime, setCourtCloseTime] = useState<string>('');
 
   // Fetch active courts and facility settings
   const fetchCourts = async () => {
@@ -43,14 +45,16 @@ export default function HomePage() {
       const settingsRes = await fetch('/api/settings', { cache: 'no-store' });
       const settingsData = await settingsRes.json();
       if (settingsData.success && settingsData.settings) {
-        const { courtOpenTime = '06:00', courtCloseTime = '22:00' } = settingsData.settings;
+        const { courtOpenTime: open = '06:00', courtCloseTime: close = '22:00' } = settingsData.settings;
+        setCourtOpenTime(open);
+        setCourtCloseTime(close);
         const formatBadgeTime = (t: string) => {
           const h = parseInt(t.split(':')[0], 10);
           const ampm = h >= 12 ? 'PM' : 'AM';
           const dh = h % 12 === 0 ? 12 : h % 12;
           return `${dh}:00 ${ampm}`;
         };
-        setOperatingHoursText(`Open Daily • ${formatBadgeTime(courtOpenTime)} – ${formatBadgeTime(courtCloseTime)}`);
+        setOperatingHoursText(`Open Daily • ${formatBadgeTime(open)} – ${formatBadgeTime(close)}`);
       }
     } catch (err) {
       console.error('Error fetching courts/settings:', err);
@@ -87,10 +91,14 @@ export default function HomePage() {
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
           {/* Badge */}
-          <div className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] sm:text-xs font-semibold text-lime-600 dark:text-lime-400 mb-5 sm:mb-6 shadow-sm">
-            <span className="w-2 h-2 rounded-full bg-lime-500 animate-ping" />
-            <span>{operatingHoursText}</span>
-          </div>
+          {operatingHoursText ? (
+            <div className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] sm:text-xs font-semibold text-lime-600 dark:text-lime-400 mb-5 sm:mb-6 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-lime-500 animate-ping" />
+              <span>{operatingHoursText}</span>
+            </div>
+          ) : (
+            <div className="h-8 mb-5 sm:mb-6" />
+          )}
 
           {/* Main Headline */}
           <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight text-slate-950 dark:text-white max-w-4xl mx-auto leading-[1.12] sm:leading-[1.08]">
@@ -196,6 +204,8 @@ export default function HomePage() {
               <CalendarSlotPicker
                 courts={courts}
                 selectedCourt={selectedCourt}
+                initialOpenTime={courtOpenTime || undefined}
+                initialCloseTime={courtCloseTime || undefined}
                 onSelectCourt={(c) => setSelectedCourt(c)}
                 onProceedToBooking={handleProceedToBooking}
               />

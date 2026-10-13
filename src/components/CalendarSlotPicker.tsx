@@ -17,6 +17,8 @@ import {
 interface CalendarSlotPickerProps {
   courts: Court[];
   selectedCourt: Court;
+  initialOpenTime?: string;
+  initialCloseTime?: string;
   onSelectCourt: (court: Court) => void;
   onProceedToBooking: (bookingDetails: {
     court: Court;
@@ -31,6 +33,8 @@ interface CalendarSlotPickerProps {
 export default function CalendarSlotPicker({
   courts,
   selectedCourt,
+  initialOpenTime,
+  initialCloseTime,
   onSelectCourt,
   onProceedToBooking
 }: CalendarSlotPickerProps) {
@@ -39,8 +43,8 @@ export default function CalendarSlotPicker({
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
-  const [openTime, setOpenTime] = useState<string>('06:00');
-  const [closeTime, setCloseTime] = useState<string>('22:00');
+  const [openTime, setOpenTime] = useState<string>(initialOpenTime || '06:00');
+  const [closeTime, setCloseTime] = useState<string>(initialCloseTime || '22:00');
 
   // Helper to get local date string YYYY-MM-DD
   const getTodayStr = () => {
@@ -65,22 +69,30 @@ export default function CalendarSlotPicker({
     return slotHour < currentHour;
   };
 
+  // Sync props if provided
+  useEffect(() => {
+    if (initialOpenTime) setOpenTime(initialOpenTime);
+    if (initialCloseTime) setCloseTime(initialCloseTime);
+  }, [initialOpenTime, initialCloseTime]);
+
   // Initialize today's date safely in useEffect and fetch settings
   useEffect(() => {
     const today = getTodayStr();
     setSelectedDate(today);
     setLastRefreshed(new Date().toLocaleTimeString());
 
-    fetch('/api/settings', { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success && data.settings) {
-          if (data.settings.courtOpenTime) setOpenTime(data.settings.courtOpenTime);
-          if (data.settings.courtCloseTime) setCloseTime(data.settings.courtCloseTime);
-        }
-      })
-      .catch((err) => console.error('Failed to load settings:', err));
-  }, []);
+    if (!initialOpenTime || !initialCloseTime) {
+      fetch('/api/settings', { cache: 'no-store' })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.settings) {
+            if (data.settings.courtOpenTime) setOpenTime(data.settings.courtOpenTime);
+            if (data.settings.courtCloseTime) setCloseTime(data.settings.courtCloseTime);
+          }
+        })
+        .catch((err) => console.error('Failed to load settings:', err));
+    }
+  }, [initialOpenTime, initialCloseTime]);
 
   // Compute operating hours slots dynamically from openTime to closeTime
   const timeSlots = useMemo(() => {

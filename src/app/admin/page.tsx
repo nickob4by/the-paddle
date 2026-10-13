@@ -194,16 +194,18 @@ export default function AdminPage() {
         });
       }
 
-      // Fetch settings
-      const settingsRes = await fetch('/api/settings', { cache: 'no-store' });
-      const settingsData = await settingsRes.json();
-      if (settingsData.success && settingsData.settings) {
-        setSettings(settingsData.settings);
-        setSettingsQrUrl(settingsData.settings.gcashQrUrl || '');
-        setSettingsAccountName(settingsData.settings.gcashAccountName || '');
-        setSettingsNumber(settingsData.settings.gcashNumber || '');
-        setSettingsOpenTime(settingsData.settings.courtOpenTime || '06:00');
-        setSettingsCloseTime(settingsData.settings.courtCloseTime || '22:00');
+      // Fetch settings (only update editable input state if NOT background polling, so user inputs are never overwritten/reverted while typing or selecting)
+      if (!isBackground) {
+        const settingsRes = await fetch('/api/settings', { cache: 'no-store' });
+        const settingsData = await settingsRes.json();
+        if (settingsData.success && settingsData.settings) {
+          setSettings(settingsData.settings);
+          setSettingsQrUrl(settingsData.settings.gcashQrUrl || '');
+          setSettingsAccountName(settingsData.settings.gcashAccountName || '');
+          setSettingsNumber(settingsData.settings.gcashNumber || '');
+          setSettingsOpenTime(settingsData.settings.courtOpenTime || '06:00');
+          setSettingsCloseTime(settingsData.settings.courtCloseTime || '22:00');
+        }
       }
 
       setLastSynced(new Date().toLocaleTimeString());
