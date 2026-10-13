@@ -39,20 +39,36 @@ export default function CalendarSlotPicker({
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
+  const [openTime, setOpenTime] = useState<string>('06:00');
+  const [closeTime, setCloseTime] = useState<string>('22:00');
 
-  // Initialize today's date safely in useEffect
+  // Initialize today's date safely in useEffect and fetch settings
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     setSelectedDate(today);
     setLastRefreshed(new Date().toLocaleTimeString());
+
+    fetch('/api/settings', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.settings) {
+          if (data.settings.courtOpenTime) setOpenTime(data.settings.courtOpenTime);
+          if (data.settings.courtCloseTime) setCloseTime(data.settings.courtCloseTime);
+        }
+      })
+      .catch((err) => console.error('Failed to load settings:', err));
   }, []);
 
-  // Operating hours: 06:00 to 22:00 (1-hour slots)
-  const timeSlots = [
-    '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
-    '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
-    '18:00', '19:00', '20:00', '21:00'
-  ];
+  // Compute operating hours slots dynamically from openTime to closeTime
+  const timeSlots = useMemo(() => {
+    const startH = parseInt(openTime.split(':')[0], 10) || 6;
+    const endH = parseInt(closeTime.split(':')[0], 10) || 22;
+    const slots: string[] = [];
+    for (let h = startH; h < endH; h++) {
+      slots.push(`${h.toString().padStart(2, '0')}:00`);
+    }
+    return slots.length > 0 ? slots : ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
+  }, [openTime, closeTime]);
 
   // Fetch bookings for the selected court and date
   const fetchBookings = useCallback(async () => {

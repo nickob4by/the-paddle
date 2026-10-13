@@ -65,6 +65,8 @@ export default function AdminPage() {
   const [settingsQrUrl, setSettingsQrUrl] = useState('');
   const [settingsAccountName, setSettingsAccountName] = useState('');
   const [settingsNumber, setSettingsNumber] = useState('');
+  const [settingsOpenTime, setSettingsOpenTime] = useState('06:00');
+  const [settingsCloseTime, setSettingsCloseTime] = useState('22:00');
   const [settingsPin, setSettingsPin] = useState('');
   const [settingsSavedMsg, setSettingsSavedMsg] = useState('');
   const [uploadingQr, setUploadingQr] = useState(false);
@@ -106,6 +108,8 @@ export default function AdminPage() {
         setSettingsQrUrl(settingsData.settings.gcashQrUrl || '');
         setSettingsAccountName(settingsData.settings.gcashAccountName || '');
         setSettingsNumber(settingsData.settings.gcashNumber || '');
+        setSettingsOpenTime(settingsData.settings.courtOpenTime || '06:00');
+        setSettingsCloseTime(settingsData.settings.courtCloseTime || '22:00');
       }
     } catch (err) {
       console.error('Failed to fetch admin data:', err);
@@ -312,6 +316,8 @@ export default function AdminPage() {
           gcashQrUrl: settingsQrUrl,
           gcashAccountName: settingsAccountName.trim(),
           gcashNumber: settingsNumber.trim(),
+          courtOpenTime: settingsOpenTime,
+          courtCloseTime: settingsCloseTime,
           ...(settingsPin.trim() ? { adminPin: settingsPin.trim() } : {})
         })
       });
@@ -905,6 +911,65 @@ export default function AdminPage() {
                     onChange={(e) => setSettingsNumber(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-lime-400 font-mono"
                   />
+                </div>
+              </div>
+
+              {/* Operating Hours Configuration */}
+              <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-lime-400" />
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300">
+                    Facility Operating Hours
+                  </label>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Configure the earliest opening time and latest closing time for court reservations.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Opening Time
+                    </label>
+                    <select
+                      value={settingsOpenTime}
+                      onChange={(e) => setSettingsOpenTime(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-lime-400"
+                    >
+                      {Array.from({ length: 24 }).map((_, i) => {
+                        const val = `${i.toString().padStart(2, '0')}:00`;
+                        const hour = i % 12 === 0 ? 12 : i % 12;
+                        const ampm = i >= 12 ? 'PM' : 'AM';
+                        return (
+                          <option key={val} value={val}>
+                            {val} ({hour}:00 {ampm})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      Closing Time
+                    </label>
+                    <select
+                      value={settingsCloseTime}
+                      onChange={(e) => setSettingsCloseTime(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-lime-400"
+                    >
+                      {Array.from({ length: 24 }).map((_, i) => {
+                        const val = `${i.toString().padStart(2, '0')}:00`;
+                        const hour = i % 12 === 0 ? 12 : i % 12;
+                        const ampm = i >= 12 ? 'PM' : 'AM';
+                        return (
+                          <option key={val} value={val}>
+                            {val} ({hour}:00 {ampm})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
                 </div>
               </div>
 

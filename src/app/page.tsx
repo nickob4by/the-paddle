@@ -25,7 +25,9 @@ export default function HomePage() {
     totalAmount: number;
   } | null>(null);
 
-  // Fetch active courts
+  const [operatingHoursText, setOperatingHoursText] = useState('Open Daily • 6:00 AM – 10:00 PM');
+
+  // Fetch active courts and facility settings
   const fetchCourts = async () => {
     try {
       setLoadingCourts(true);
@@ -37,8 +39,21 @@ export default function HomePage() {
           setSelectedCourt(data.courts[0]);
         }
       }
+
+      const settingsRes = await fetch('/api/settings', { cache: 'no-store' });
+      const settingsData = await settingsRes.json();
+      if (settingsData.success && settingsData.settings) {
+        const { courtOpenTime = '06:00', courtCloseTime = '22:00' } = settingsData.settings;
+        const formatBadgeTime = (t: string) => {
+          const h = parseInt(t.split(':')[0], 10);
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const dh = h % 12 === 0 ? 12 : h % 12;
+          return `${dh}:00 ${ampm}`;
+        };
+        setOperatingHoursText(`Open Daily • ${formatBadgeTime(courtOpenTime)} – ${formatBadgeTime(courtCloseTime)}`);
+      }
     } catch (err) {
-      console.error('Error fetching courts:', err);
+      console.error('Error fetching courts/settings:', err);
     } finally {
       setLoadingCourts(false);
     }
@@ -74,7 +89,7 @@ export default function HomePage() {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-800 text-xs font-semibold text-lime-400 mb-6 shadow-sm">
             <span className="w-2 h-2 rounded-full bg-lime-400 animate-ping" />
-            <span>Open Daily • 6:00 AM – 10:00 PM</span>
+            <span>{operatingHoursText}</span>
           </div>
 
           {/* Main Headline */}
