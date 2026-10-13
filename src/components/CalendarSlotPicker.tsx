@@ -188,31 +188,33 @@ export default function CalendarSlotPicker({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 md:p-8 shadow-2xl relative">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl sm:rounded-3xl p-4 sm:p-6 md:p-8 shadow-xl relative transition-colors duration-200">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 pb-5 sm:pb-6 border-b border-slate-200 dark:border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-lime-400 animate-pulse" />
-            <h2 className="text-xl sm:text-2xl font-black text-white">Court Reservation</h2>
+            <span className="w-2.5 h-2.5 rounded-full bg-lime-500 animate-pulse" />
+            <h2 className="text-lg sm:text-2xl font-black text-slate-950 dark:text-white">
+              Court Reservation
+            </h2>
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
             Choose your court, select a date, and tap the available 1-hour time slots to book.
           </p>
         </div>
 
         {/* Live sync badge */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between sm:justify-end gap-2.5">
           {lastRefreshed && (
-            <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-700/60">
-              <RefreshCw className={`w-3.5 h-3.5 text-lime-400 ${loadingBookings ? 'animate-spin' : ''}`} />
+            <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1.5 rounded-full border border-slate-200 dark:border-slate-700/60">
+              <RefreshCw className={`w-3 h-3 sm:w-3.5 sm:h-3.5 text-lime-600 dark:text-lime-400 ${loadingBookings ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">Live Sync:</span>
               <span>{lastRefreshed}</span>
             </div>
           )}
           <button
             onClick={() => fetchBookings()}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            className="p-1.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
             title="Refresh Slots"
           >
             <RefreshCw className="w-4 h-4" />
@@ -221,13 +223,13 @@ export default function CalendarSlotPicker({
       </div>
 
       {/* STEP 1: CONCISE COURTS SELECTOR */}
-      <div className="mt-6">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-lime-400" />
+      <div className="mt-5 sm:mt-6">
+        <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5 sm:mb-3 flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
           Step 1 • Select Court
         </label>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
           {courts.map((court) => {
             const isSelected = selectedCourt?.id === court.id;
             return (
@@ -235,15 +237,15 @@ export default function CalendarSlotPicker({
                 key={court.id}
                 type="button"
                 onClick={() => onSelectCourt(court)}
-                className={`p-4 rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
+                className={`p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
                   isSelected
-                    ? 'bg-slate-800/95 border-lime-400 ring-2 ring-lime-400/30 shadow-lg shadow-lime-500/10'
-                    : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-850'
+                    ? 'bg-lime-50 dark:bg-slate-800/95 border-lime-500 ring-2 ring-lime-500/30 shadow-md'
+                    : 'bg-slate-50/70 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-850'
                 }`}
               >
                 {/* Header row */}
-                <div className="flex items-center justify-between w-full mb-2">
-                  <span className="font-black text-white text-base">
+                <div className="flex items-center justify-between w-full mb-1.5">
+                  <span className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
                     {court.name}
                   </span>
                   {isSelected && (
@@ -257,11 +259,11 @@ export default function CalendarSlotPicker({
                 {/* Pricing & description */}
                 <div className="flex items-baseline justify-between w-full mt-1">
                   <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-black text-lime-400">₱{court.hourlyRate}</span>
-                    <span className="text-xs text-slate-400 font-medium">/hr</span>
+                    <span className="text-lg sm:text-xl font-black text-lime-600 dark:text-lime-400">₱{court.hourlyRate}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">/hr</span>
                   </div>
                   {court.description && (
-                    <span className="text-[11px] text-slate-400 truncate max-w-[130px]">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[140px]">
                       {court.description}
                     </span>
                   )}
@@ -273,29 +275,29 @@ export default function CalendarSlotPicker({
       </div>
 
       {/* STEP 2: DROPDOWN CALENDAR DATE PICKER */}
-      <div className="mt-7">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
-          <CalendarIcon className="w-4 h-4 text-lime-400" />
+      <div className="mt-6 sm:mt-7">
+        <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5 sm:mb-3 flex items-center gap-1.5">
+          <CalendarIcon className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
           Step 2 • Choose Date
         </label>
 
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800/80">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950/70 p-3 sm:p-3.5 rounded-xl sm:rounded-2xl border border-slate-200 dark:border-slate-800/80">
           {/* Day Navigation */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={handlePrevDay}
-              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
               title="Previous Day"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
             <button
               onClick={handleSetToday}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
+              className={`px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
                 isToday
-                  ? 'bg-lime-500/15 text-lime-400 border-lime-500/30'
-                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800 hover:border-slate-700'
+                  ? 'bg-lime-500/15 text-lime-700 dark:text-lime-400 border-lime-500/30'
+                  : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
               }`}
             >
               Today
@@ -303,26 +305,26 @@ export default function CalendarSlotPicker({
 
             <button
               onClick={handleNextDay}
-              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+              className="p-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
               title="Next Day"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
-            <div className="ml-2">
-              <span className="text-base sm:text-lg font-black text-white block leading-tight">
+            <div className="ml-1.5 sm:ml-2">
+              <span className="text-sm sm:text-lg font-black text-slate-950 dark:text-white block leading-tight">
                 {formattedDate}
               </span>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
                 {isToday ? 'Today\'s Schedule' : 'Selected Schedule'}
               </span>
             </div>
           </div>
 
           {/* Native Dropdown / Popover Calendar Button */}
-          <div className="relative">
-            <label className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 hover:border-slate-700 text-xs font-bold transition-all cursor-pointer">
-              <CalendarIcon className="w-4 h-4 text-lime-400" />
+          <div className="relative w-full sm:w-auto">
+            <label className="flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 sm:py-2.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 text-xs font-bold transition-all cursor-pointer shadow-sm">
+              <CalendarIcon className="w-4 h-4 text-lime-600 dark:text-lime-400" />
               <span>Change Date</span>
               <input
                 type="date"
@@ -338,31 +340,32 @@ export default function CalendarSlotPicker({
       </div>
 
       {/* Legend */}
-      <div className="mt-6 flex flex-wrap items-center gap-4 text-xs text-slate-400 bg-slate-950/40 p-3 rounded-xl border border-slate-800/60">
-        <div className="flex items-center gap-2">
-          <div className="w-3.5 h-3.5 rounded-md bg-slate-800 border border-slate-700" />
+      <div className="mt-5 sm:mt-6 flex flex-wrap items-center gap-3 sm:gap-4 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/40 p-2.5 sm:p-3 rounded-xl border border-slate-200 dark:border-slate-800/60">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-md bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700" />
           <span>Available</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3.5 h-3.5 rounded-md bg-lime-500 border border-lime-400" />
-          <span className="text-lime-300 font-semibold">Your Selection</span>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-md bg-lime-500 border border-lime-500" />
+          <span className="text-lime-700 dark:text-lime-300 font-semibold">Selected</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3.5 h-3.5 rounded-md bg-rose-950/60 border border-rose-900/60 flex items-center justify-center">
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-md bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 flex items-center justify-center">
             <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
           </div>
-          <span className="text-rose-400">Reserved / Unavailable</span>
+          <span className="text-rose-600 dark:text-rose-400">Reserved</span>
         </div>
       </div>
 
       {/* STEP 3: TIME SLOTS GRID */}
-      <div className="mt-6">
-        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-lime-400" />
+      <div className="mt-5 sm:mt-6">
+        <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5 sm:mb-3 flex items-center gap-1.5">
+          <Clock className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
           Step 3 • Available 1-Hour Time Slots ({selectedCourt?.name})
         </label>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
+        {/* Responsive grid: 2 cols on mobile, 3 on sm, 4 on md+ */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
           {timeSlots.map((slot) => {
             const booked = isSlotBooked(slot);
             const isSelected = selectedSlots.includes(slot);
@@ -374,32 +377,32 @@ export default function CalendarSlotPicker({
                 key={slot}
                 disabled={booked}
                 onClick={() => handleSlotToggle(slot)}
-                className={`relative group p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[74px] ${
+                className={`relative group p-2.5 sm:p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[66px] sm:min-h-[74px] ${
                   booked
-                    ? 'bg-rose-950/20 border-rose-900/30 text-rose-300/40 cursor-not-allowed opacity-65'
+                    ? 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30 text-rose-400 dark:text-rose-300/40 cursor-not-allowed opacity-70'
                     : isSelected
-                    ? 'bg-lime-500 border-lime-400 text-slate-950 font-bold shadow-md shadow-lime-500/25 scale-[1.02]'
-                    : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 hover:border-lime-500/50 text-slate-200'
+                    ? 'bg-lime-500 border-lime-500 text-slate-950 font-bold shadow-md shadow-lime-500/20 scale-[1.02]'
+                    : 'bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-lime-500/50 text-slate-800 dark:text-slate-200'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
-                  <span className={`text-sm font-bold ${isSelected ? 'text-slate-950' : booked ? 'text-rose-400/50 line-through' : 'text-white'}`}>
+                  <span className={`text-xs sm:text-sm font-bold ${isSelected ? 'text-slate-950' : booked ? 'text-rose-500/70 dark:text-rose-400/50 line-through' : 'text-slate-900 dark:text-white'}`}>
                     {formatTime(slot)}
                   </span>
-                  {isSelected && <CheckCircle2 className="w-4 h-4 text-slate-950 stroke-[2.5]" />}
+                  {isSelected && <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 stroke-[2.5]" />}
                   {booked && (
-                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-900/40 text-rose-400 border border-rose-800/50">
+                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
                       Booked
                     </span>
                   )}
                 </div>
 
                 <div className="flex items-center justify-between w-full mt-1">
-                  <span className={`text-[11px] ${isSelected ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>
+                  <span className={`text-[10px] sm:text-[11px] ${isSelected ? 'text-slate-900 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
                     until {formatTime(slotEndStr)}
                   </span>
                   {!booked && !isSelected && (
-                    <span className="text-[11px] text-lime-400/90 font-medium">Available</span>
+                    <span className="text-[10px] sm:text-[11px] text-lime-600 dark:text-lime-400 font-medium">Available</span>
                   )}
                 </div>
               </button>
@@ -410,25 +413,25 @@ export default function CalendarSlotPicker({
 
       {/* Bottom Summary Bar */}
       {selectedSlots.length > 0 && selectedDate && selectedCourt && (
-        <div className="mt-8 p-5 bg-gradient-to-r from-slate-800 to-slate-850 rounded-2xl border border-lime-500/40 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-2">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs uppercase font-extrabold tracking-wider px-2 py-0.5 rounded bg-lime-500 text-slate-950">
+        <div className="mt-6 sm:mt-8 p-4 sm:p-5 bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-850 rounded-2xl border border-lime-500/50 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2">
+          <div className="space-y-0.5 sm:space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] sm:text-xs uppercase font-extrabold tracking-wider px-2 py-0.5 rounded bg-lime-500 text-slate-950">
                 {durationHours} Hour{durationHours > 1 ? 's' : ''} Selected
               </span>
-              <span className="text-sm font-semibold text-white">
+              <span className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white">
                 {formatTime(startTime)} – {formatTime(endTime)}
               </span>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
               {selectedDate} • {selectedCourt.name} (₱{selectedCourt.hourlyRate}/hr)
             </p>
           </div>
 
-          <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
-            <div className="text-right">
-              <span className="text-xs text-slate-400 block font-medium">Total Price</span>
-              <span className="text-2xl font-black text-lime-400">₱{totalAmount.toLocaleString()}</span>
+          <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto justify-between sm:justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-300 dark:border-slate-700">
+            <div className="text-left sm:text-right">
+              <span className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 block font-medium">Total Price</span>
+              <span className="text-xl sm:text-2xl font-black text-lime-600 dark:text-lime-400">₱{totalAmount.toLocaleString()}</span>
             </div>
 
             <button
@@ -442,18 +445,18 @@ export default function CalendarSlotPicker({
                   totalAmount
                 });
               }}
-              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-sm shadow-lg shadow-lime-500/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
+              className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-lime-500/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
             >
               <span>Continue Booking</span>
-              <ChevronRight className="w-4 h-4 stroke-[3]" />
+              <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />
             </button>
           </div>
         </div>
       )}
 
       {selectedSlots.length === 0 && (
-        <div className="mt-6 p-4 rounded-xl bg-slate-950/40 border border-slate-800/80 flex items-center gap-3 text-slate-400 text-sm">
-          <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+        <div className="mt-5 sm:mt-6 p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 flex items-center gap-2.5 text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
+          <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 dark:text-amber-400 flex-shrink-0" />
           <span>Click on one or more available time slots above to select your play time.</span>
         </div>
       )}

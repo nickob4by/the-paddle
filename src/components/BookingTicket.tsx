@@ -33,68 +33,68 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Success banner */}
-      <div className="text-center py-2">
-        <div className="w-14 h-14 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg shadow-emerald-500/10">
-          <CheckCircle2 className="w-8 h-8" />
+      <div className="text-center py-1 sm:py-2">
+        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-lg shadow-emerald-500/10">
+          <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8" />
         </div>
-        <h3 className="text-2xl font-black text-white">Court Reserved Successfully!</h3>
-        <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+        <h3 className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white">Court Reserved Successfully!</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
           Your court slot has been locked in the calendar. Please save your booking code.
         </p>
       </div>
 
       {/* Ticket Card */}
-      <div className="relative bg-slate-950 border border-slate-800 rounded-2xl p-6 shadow-xl overflow-hidden">
+      <div className="relative bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl overflow-hidden transition-colors">
         {/* Decorative corner accent */}
-        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-lime-500/10 to-transparent rounded-bl-full pointer-events-none" />
+        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-lime-500/15 to-transparent rounded-bl-full pointer-events-none" />
 
         {/* Top bar with Booking Code */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
               Booking Reference
             </span>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="font-mono text-2xl font-black text-lime-400 tracking-wider">
+              <span className="font-mono text-xl sm:text-2xl font-black text-lime-600 dark:text-lime-400 tracking-wider">
                 {booking.bookingCode}
               </span>
               <button
                 type="button"
                 onClick={copyCode}
-                className="p-1.5 text-slate-400 hover:text-white bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                className="p-1.5 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
                 title="Copy Code"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
           <div className="text-right">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+            <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
               Status
             </span>
-            <span className="inline-block mt-0.5 px-2.5 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <span className="inline-block mt-0.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
               {booking.bookingStatus}
             </span>
           </div>
         </div>
 
         {/* Details grid */}
-        <div className="grid grid-cols-2 gap-4 py-4 text-xs">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 py-3 sm:py-4 text-xs">
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-1">
-              <MapPin className="w-3.5 h-3.5 text-lime-400" /> Court
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
+              <MapPin className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Court
             </span>
-            <span className="text-white font-bold text-sm">{booking.courtName || 'Pickleball Court'}</span>
+            <span className="text-slate-900 dark:text-white font-bold text-xs sm:text-sm">{booking.courtName || 'Pickleball Court'}</span>
           </div>
 
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-1">
-              <Calendar className="w-3.5 h-3.5 text-lime-400" /> Date
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
+              <Calendar className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Date
             </span>
-            <span className="text-white font-bold text-sm">
+            <span className="text-slate-900 dark:text-white font-bold text-xs sm:text-sm">
               {new Date(booking.bookingDate).toLocaleDateString('en-US', {
                 weekday: 'short',
                 month: 'short',
@@ -105,22 +105,22 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
           </div>
 
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-1">
-              <Clock className="w-3.5 h-3.5 text-lime-400" /> Play Time
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
+              <Clock className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Play Time
             </span>
-            <span className="text-white font-bold text-sm">
+            <span className="text-slate-900 dark:text-white font-bold text-xs sm:text-sm">
               {formatTime(booking.startTime)} – {formatTime(booking.endTime)} ({booking.durationHours} hr{booking.durationHours > 1 ? 's' : ''})
             </span>
           </div>
 
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-1">
-              <CreditCard className="w-3.5 h-3.5 text-lime-400" /> Payment
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
+              <CreditCard className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Payment
             </span>
-            <span className="text-white font-bold text-sm">
+            <span className="text-slate-900 dark:text-white font-bold text-xs sm:text-sm">
               ₱{booking.totalAmount.toLocaleString()} via {booking.paymentMethod}
             </span>
-            <span className="text-[10px] text-slate-400 block">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
               {booking.paymentMethod === 'GCASH'
                 ? 'Payment screenshot submitted'
                 : 'Pay at front desk upon arrival'}
@@ -128,42 +128,42 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
           </div>
 
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-1">
-              <User className="w-3.5 h-3.5 text-lime-400" /> Booked By
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
+              <User className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Booked By
             </span>
-            <span className="text-white font-semibold text-xs">{booking.clientName}</span>
+            <span className="text-slate-900 dark:text-white font-semibold text-xs">{booking.clientName}</span>
           </div>
 
           <div>
-            <span className="text-slate-400 flex items-center gap-1 mb-1">
-              <Phone className="w-3.5 h-3.5 text-lime-400" /> Contact
+            <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
+              <Phone className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Contact
             </span>
-            <span className="text-white font-semibold text-xs">{booking.clientPhone}</span>
+            <span className="text-slate-900 dark:text-white font-semibold text-xs">{booking.clientPhone}</span>
           </div>
         </div>
 
-        {/* Footer note */}
-        <div className="pt-3 border-t border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-          <span>The Paddle Club • Open Daily 6AM - 10PM</span>
-          <span>{new Date(booking.createdAt).toLocaleDateString()}</span>
+        {/* Footer tip */}
+        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+          <span>Present this reference upon arrival</span>
+          <span className="font-semibold text-lime-600 dark:text-lime-400">The Paddle Club</span>
         </div>
       </div>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3">
         <button
           type="button"
           onClick={handlePrint}
-          className="flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-white font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          className="flex-1 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 font-bold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700"
         >
-          <Printer className="w-4 h-4 text-slate-300" />
-          <span>Print / Save Pass</span>
+          <Printer className="w-4 h-4" />
+          <span>Save / Print Ticket</span>
         </button>
 
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 py-3 px-4 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs transition-colors cursor-pointer"
+          className="flex-1 py-3 px-4 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs sm:text-sm shadow-md shadow-lime-500/20 transition-all cursor-pointer"
         >
           Done
         </button>
