@@ -154,7 +154,7 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
         <button
           type="button"
           onClick={handlePrint}
-          className="flex-1 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 font-bold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700"
+          className="flex-1 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs sm:text-sm transition-colors cursor-pointer flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700"
         >
           <Printer className="w-4 h-4" />
           <span>Save / Print Ticket</span>

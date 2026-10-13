@@ -272,7 +272,7 @@ export default function CalendarSlotPicker({
                 className={`p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
                   isSelected
                     ? 'bg-lime-50 dark:bg-slate-800/95 border-lime-500 ring-2 ring-lime-500/30 shadow-md'
-                    : 'bg-slate-50/70 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-850'
+                    : 'bg-slate-50/70 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800'
                 }`}
               >
                 {/* Header row */}
@@ -482,7 +482,7 @@ export default function CalendarSlotPicker({
 
       {/* Bottom Summary Bar */}
       {selectedSlots.length > 0 && selectedDate && selectedCourt && (
-        <div className="mt-6 sm:mt-8 p-4 sm:p-5 bg-gradient-to-r from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-850 rounded-2xl border border-lime-500/50 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2">
+        <div className="mt-6 sm:mt-8 p-4 sm:p-5 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-lime-500/50 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2">
           <div className="space-y-0.5 sm:space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] sm:text-xs uppercase font-extrabold tracking-wider px-2 py-0.5 rounded bg-lime-500 text-slate-950">
