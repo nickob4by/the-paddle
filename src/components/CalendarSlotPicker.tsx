@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Court, Booking } from '@/lib/types';
+import { Court, Booking, getSlotRate, getSlotPricingRule, parsePricingRules } from '@/lib/types';
 import {
   Clock,
   Calendar as CalendarIcon,
@@ -11,7 +11,8 @@ import {
   ChevronRight,
   ChevronLeft,
   Sparkles,
-  Check
+  Check,
+  Moon
 } from 'lucide-react';
 
 interface CalendarSlotPickerProps {
@@ -228,7 +229,7 @@ export default function CalendarSlotPicker({
   const endHour = lastSlot ? parseInt(lastSlot.split(':')[0], 10) + 1 : 0;
   const endTime = lastSlot ? `${endHour.toString().padStart(2, '0')}:00` : '';
   const durationHours = sortedSlots.length;
-  const totalAmount = durationHours * (selectedCourt?.hourlyRate || 0);
+  const totalAmount = sortedSlots.reduce((sum, slot) => sum + getSlotRate(selectedCourt, slot), 0);
 
   // Format 24h to 12h AM/PM
   const formatTime = (time: string) => {
@@ -322,6 +323,20 @@ export default function CalendarSlotPicker({
                     </span>
                   )}
                 </div>
+
+                {parsePricingRules(court.pricingRules).length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap gap-1">
+                    {parsePricingRules(court.pricingRules).map((r) => (
+                      <span
+                        key={r.id || r.startTime}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50"
+                      >
+                        <Moon className="w-2.5 h-2.5" />
+                        <span>{r.label || 'Evening'}: ₱{r.rate}/hr</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </button>
             );
           })}
@@ -439,6 +454,8 @@ export default function CalendarSlotPicker({
             const isSelected = selectedSlots.includes(slot);
             const nextH = parseInt(slot.split(':')[0], 10) + 1;
             const slotEndStr = `${nextH.toString().padStart(2, '0')}:00`;
+            const slotRate = getSlotRate(selectedCourt, slot);
+            const slotRule = getSlotPricingRule(selectedCourt, slot);
 
             const isDisabled = booked || inPast;
 
@@ -482,7 +499,7 @@ export default function CalendarSlotPicker({
                   )}
                 </div>
 
-                <div className="flex items-center justify-between w-full mt-1">
+                <div className="flex items-center justify-between w-full mt-1.5">
                   <span className={`text-[10px] sm:text-[11px] ${
                     isSelected
                       ? 'text-slate-900 font-semibold'
@@ -492,8 +509,23 @@ export default function CalendarSlotPicker({
                   }`}>
                     until {formatTime(slotEndStr)}
                   </span>
-                  {!booked && !inPast && !isSelected && (
-                    <span className="text-[10px] sm:text-[11px] text-lime-600 dark:text-lime-400 font-medium">Available</span>
+                  {!booked && !inPast && (
+                    <div className="flex items-center gap-1">
+                      {slotRule && (
+                        <span className={`text-[9px] px-1 py-0.5 rounded font-semibold ${
+                          isSelected
+                            ? 'bg-slate-950/15 text-slate-950'
+                            : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
+                        }`}>
+                          {slotRule.label || 'Evening'}
+                        </span>
+                      )}
+                      <span className={`text-[11px] sm:text-xs font-black ${
+                        isSelected ? 'text-slate-950' : 'text-lime-600 dark:text-lime-400'
+                      }`}>
+                        ₱{slotRate}
+                      </span>
+                    </div>
                   )}
                 </div>
               </button>
@@ -515,7 +547,14 @@ export default function CalendarSlotPicker({
               </span>
             </div>
             <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
-              {selectedDate} • {selectedCourt.name} (₱{selectedCourt.hourlyRate}/hr)
+              {selectedDate} • {selectedCourt.name}
+              {sortedSlots.length > 0 && (() => {
+                const uniqueRates = Array.from(new Set(sortedSlots.map((s) => getSlotRate(selectedCourt, s))));
+                if (uniqueRates.length === 1) {
+                  return ` • ₱${uniqueRates[0]}/hr`;
+                }
+                return ` • Multi-rate applied (₱${Math.min(...uniqueRates)} – ₱${Math.max(...uniqueRates)}/hr)`;
+              })()}
             </p>
           </div>
 

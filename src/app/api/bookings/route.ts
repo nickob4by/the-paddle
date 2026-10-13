@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { Booking, Court } from '@/lib/types';
+import { Booking, Court, getSlotRate } from '@/lib/types';
 import crypto from 'crypto';
 
 export async function GET(request: Request) {
@@ -142,11 +142,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Calculate duration in hours
-    const startHour = parseInt(startTime.split(':')[0], 10) + parseInt(startTime.split(':')[1] || '0', 10) / 60;
-    const endHour = parseInt(endTime.split(':')[0], 10) + parseInt(endTime.split(':')[1] || '0', 10) / 60;
-    const durationHours = Math.max(endHour - startHour, 1);
-    const totalAmount = durationHours * Number(court.hourlyRate);
+    // Calculate discrete hour slots and total amount based on time-range pricing
+    const startHourInt = parseInt(startTime.split(':')[0], 10);
+    const endHourInt = parseInt(endTime.split(':')[0], 10);
+    const slotHours: string[] = [];
+    let totalAmount = 0;
+
+    for (let h = startHourInt; h < endHourInt; h++) {
+      const slotStr = `${h.toString().padStart(2, '0')}:00`;
+      slotHours.push(slotStr);
+      totalAmount += getSlotRate(court, slotStr);
+    }
+
+    const durationHours = Math.max(slotHours.length, 1);
+    if (totalAmount === 0 && durationHours > 0) {
+      totalAmount = durationHours * Number(court.hourlyRate);
+    }
 
     // Generate readable booking code: e.g. PAD-7492
     const randomDigits = Math.floor(1000 + Math.random() * 9000);
@@ -156,14 +167,6 @@ export async function POST(request: Request) {
 
     let bookingStatus = paymentMethod === 'GCASH' ? 'PENDING' : 'CONFIRMED';
     let paymentStatus = paymentMethod === 'GCASH' ? 'VERIFICATION_PENDING' : 'UNPAID';
-
-    // Calculate discrete hour slots for atomic locking
-    const startHourInt = parseInt(startTime.split(':')[0], 10);
-    const endHourInt = parseInt(endTime.split(':')[0], 10);
-    const slotHours: string[] = [];
-    for (let h = startHourInt; h < endHourInt; h++) {
-      slotHours.push(`${h.toString().padStart(2, '0')}:00`);
-    }
 
     // Build atomic transaction queries:
     // 1. Insert master booking
