@@ -29,7 +29,10 @@ import {
   X,
   Edit2,
   Sun,
-  Moon
+  Moon,
+  Bell,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -86,6 +89,49 @@ export default function AdminPage() {
 
   // Check auth cookie/local storage
   const [todayStr, setTodayStr] = useState('');
+  const [lastSynced, setLastSynced] = useState<string>('');
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
+  const [newBookingAlert, setNewBookingAlert] = useState<Booking | null>(null);
+
+  // Play subtle chime using Web Audio API (zero external assets needed)
+  const playChime = () => {
+    try {
+      if (typeof window === 'undefined') return;
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      
+      const now = ctx.currentTime;
+      // High chime tone
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sine';
+      osc1.frequency.setValueAtTime(587.33, now); // D5
+      osc1.frequency.exponentialRampToValueAtTime(880, now + 0.15); // A5
+      gain1.gain.setValueAtTime(0.18, now);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(now);
+      osc1.stop(now + 0.5);
+
+      // Harmony tone
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sine';
+      osc2.frequency.setValueAtTime(880, now + 0.1);
+      osc2.frequency.exponentialRampToValueAtTime(1174.66, now + 0.3); // D6
+      gain2.gain.setValueAtTime(0.15, now + 0.1);
+      gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(now + 0.1);
+      osc2.stop(now + 0.6);
+    } catch (e) {
+      console.warn('Audio chime note failed:', e);
+    }
+  };
 
   useEffect(() => {
     setTodayStr(new Date().toISOString().split('T')[0]);
@@ -93,11 +139,26 @@ export default function AdminPage() {
     if (saved === 'true') {
       setIsAuthenticated(true);
     }
+    const savedSound = localStorage.getItem('paddle_admin_sound');
+    if (savedSound !== null) {
+      setSoundEnabled(savedSound === 'true');
+    }
   }, []);
 
-  // Fetch data
-  const fetchData = async () => {
+  const toggleSound = () => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem('paddle_admin_sound', String(next));
+      if (next) playChime();
+      return next;
+    });
+  };
+
+  // Fetch data with silent auto-refresh capability
+  const fetchData = async (isBackground = false) => {
     try {
+      if (!isBackground) setIsSyncing(true);
+
       // Fetch courts (all, including inactive)
       const courtsRes = await fetch('/api/courts?all=true');
       const courtsData = await courtsRes.json();
@@ -109,7 +170,28 @@ export default function AdminPage() {
       const bookingsRes = await fetch('/api/bookings');
       const bookingsData = await bookingsRes.json();
       if (bookingsData.success) {
-        setBookings(bookingsData.bookings);
+        setBookings((prevBookings) => {
+          const freshList: Booking[] = bookingsData.bookings || [];
+          
+          // If running in background and we have previous bookings, detect brand-new bookings
+          if (isBackground && prevBookings.length > 0) {
+            const prevIds = new Set(prevBookings.map((b) => b.id));
+            const newArrivals = freshList.filter((b) => !prevIds.has(b.id) && b.bookingStatus !== 'CANCELLED');
+
+            if (newArrivals.length > 0) {
+              const latest = newArrivals[0];
+              setNewBookingAlert(latest);
+              if (soundEnabled) {
+                playChime();
+              }
+              // Automatically hide toast after 8 seconds
+              setTimeout(() => {
+                setNewBookingAlert((curr) => (curr?.id === latest.id ? null : curr));
+              }, 8000);
+            }
+          }
+          return freshList;
+        });
       }
 
       // Fetch settings
@@ -123,16 +205,46 @@ export default function AdminPage() {
         setSettingsOpenTime(settingsData.settings.courtOpenTime || '06:00');
         setSettingsCloseTime(settingsData.settings.courtCloseTime || '22:00');
       }
+
+      setLastSynced(new Date().toLocaleTimeString());
     } catch (err) {
       console.error('Failed to fetch admin data:', err);
+    } finally {
+      if (!isBackground) setIsSyncing(false);
     }
   };
 
+  // Initial fetch on login
   useEffect(() => {
     if (isAuthenticated) {
-      fetchData();
+      fetchData(false);
     }
   }, [isAuthenticated]);
+
+  // Real-Time Background Polling: auto-refresh bookings every 4.5 seconds
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const intervalId = setInterval(() => {
+      // Don't poll aggressively if the window/tab is completely hidden
+      if (typeof document !== 'undefined' && document.hidden) return;
+      fetchData(true);
+    }, 4500);
+
+    // Refresh immediately whenever user tabs back to the Admin dashboard
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isAuthenticated, soundEnabled]);
 
   // Handle Login
   const handleLogin = async (e: React.FormEvent) => {
@@ -508,7 +620,29 @@ export default function AdminPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-shrink-0">
+            {/* Live Sync Status Indicator */}
+            {lastSynced && (
+              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                <span className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-500 animate-ping' : 'bg-lime-500'}`} />
+                <span>Live Sync: {lastSynced}</span>
+              </div>
+            )}
+
+            {/* Sound Chime Toggle Button */}
+            <button
+              onClick={toggleSound}
+              className={`p-2 sm:px-2.5 sm:py-2 rounded-xl border transition-colors cursor-pointer ${
+                soundEnabled
+                  ? 'bg-lime-500/10 text-lime-600 dark:text-lime-400 border-lime-500/30 hover:bg-lime-500/20'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-700'
+              }`}
+              title={soundEnabled ? 'Chime sound is ON for new bookings' : 'Chime sound is MUTED'}
+              aria-label="Toggle Sound"
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
+
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
@@ -541,6 +675,54 @@ export default function AdminPage() {
           </div>
         </div>
       </header>
+
+      {/* Floating Real-Time Toast for New Booking */}
+      {newBookingAlert && (
+        <div className="fixed top-20 right-4 z-50 max-w-sm w-full bg-white dark:bg-slate-900 border-2 border-lime-500 rounded-2xl shadow-2xl p-4 animate-in slide-in-from-top-4 fade-in duration-300">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-lime-500 text-slate-950 flex items-center justify-center flex-shrink-0 shadow-md">
+                <Bell className="w-5 h-5 animate-bounce" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-black text-lime-600 dark:text-lime-400 uppercase tracking-wide">
+                    New Booking Received!
+                  </span>
+                  <span className="w-2 h-2 rounded-full bg-lime-500 animate-ping" />
+                </div>
+                <h4 className="font-bold text-slate-900 dark:text-white text-sm truncate mt-0.5">
+                  {newBookingAlert.clientName}
+                </h4>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                  {newBookingAlert.bookingDate} • {newBookingAlert.startTime} ({newBookingAlert.bookingCode})
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold">
+                    ₱{newBookingAlert.totalAmount}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setActiveTab('bookings');
+                      setSearchQuery(newBookingAlert.bookingCode);
+                      setNewBookingAlert(null);
+                    }}
+                    className="text-[11px] font-bold text-lime-600 dark:text-lime-400 hover:underline cursor-pointer"
+                  >
+                    View in Table →
+                  </button>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setNewBookingAlert(null)}
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main Admin Content */}
       <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 w-full flex-1">
@@ -687,7 +869,7 @@ export default function AdminPage() {
               </div>
 
               <button
-                onClick={fetchData}
+                onClick={() => fetchData(false)}
                 className="self-end sm:self-auto p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors cursor-pointer"
                 title="Refresh Table"
               >
