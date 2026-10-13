@@ -17,20 +17,20 @@ export default function Navbar({ onOpenLookup }: NavbarProps) {
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-2">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2 group flex-shrink min-w-0">
-          <div className="relative h-10 sm:h-12 w-auto flex items-center group-hover:scale-105 transition-transform">
+          <div className="relative h-11 sm:h-13 w-auto flex items-center group-hover:scale-105 transition-transform">
             {/* Light mode logo */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/the-paddle-logo-light.png"
               alt="The Paddle - Recreational Hub"
-              className="h-9 sm:h-11 w-auto object-contain dark:hidden"
+              className="h-10 sm:h-12 w-auto object-contain dark:hidden"
             />
             {/* Dark mode logo */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/the-paddle-logo-dark.png"
               alt="The Paddle - Recreational Hub"
-              className="h-9 sm:h-11 w-auto object-contain hidden dark:block"
+              className="h-10 sm:h-12 w-auto object-contain hidden dark:block"
             />
           </div>
         </Link>

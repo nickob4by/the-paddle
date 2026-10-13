@@ -102,19 +102,19 @@ export default function HomePage() {
           )}
 
           {/* Official Emblem Logo */}
-          <div className="flex justify-center mb-6">
-            <div className="relative h-14 sm:h-20 md:h-24 w-auto flex items-center justify-center">
+          <div className="flex justify-center mb-6 sm:mb-8">
+            <div className="relative h-24 sm:h-32 md:h-40 lg:h-48 w-auto flex items-center justify-center transition-transform duration-300 hover:scale-105">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/the-paddle-logo-light.png"
                 alt="The Paddle - Recreational Hub"
-                className="h-14 sm:h-20 md:h-24 w-auto object-contain dark:hidden drop-shadow-sm"
+                className="h-24 sm:h-32 md:h-40 lg:h-48 w-auto object-contain dark:hidden drop-shadow-md"
               />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/the-paddle-logo-dark.png"
                 alt="The Paddle - Recreational Hub"
-                className="h-14 sm:h-20 md:h-24 w-auto object-contain hidden dark:block drop-shadow-md"
+                className="h-24 sm:h-32 md:h-40 lg:h-48 w-auto object-contain hidden dark:block drop-shadow-[0_12px_35px_rgba(163,230,53,0.2)]"
               />
             </div>
           </div>
