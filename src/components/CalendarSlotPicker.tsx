@@ -1,11 +1,23 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Court, Booking } from '@/lib/types';
-import { Clock, Calendar as CalendarIcon, CheckCircle2, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
+import {
+  Clock,
+  Calendar as CalendarIcon,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  ChevronRight,
+  ChevronLeft,
+  Sparkles,
+  Check
+} from 'lucide-react';
 
 interface CalendarSlotPickerProps {
+  courts: Court[];
   selectedCourt: Court;
+  onSelectCourt: (court: Court) => void;
   onProceedToBooking: (bookingDetails: {
     court: Court;
     date: string;
@@ -16,40 +28,22 @@ interface CalendarSlotPickerProps {
   }) => void;
 }
 
-interface DateOption {
-  dateStr: string;
-  dayName: string;
-  dayNum: number;
-  monthName: string;
-  isToday: boolean;
-}
-
 export default function CalendarSlotPicker({
+  courts,
   selectedCourt,
+  onSelectCourt,
   onProceedToBooking
 }: CalendarSlotPickerProps) {
   const [selectedDate, setSelectedDate] = useState<string>('');
-  const [dateOptions, setDateOptions] = useState<DateOption[]>([]);
   const [existingBookings, setExistingBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
 
-  // Initialize dates safely in useEffect to satisfy Next.js 16 prerender checks
+  // Initialize today's date safely in useEffect
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     setSelectedDate(today);
-
-    const options = Array.from({ length: 14 }).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
-      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-      const dayNum = d.getDate();
-      const monthName = d.toLocaleDateString('en-US', { month: 'short' });
-      return { dateStr, dayName, dayNum, monthName, isToday: i === 0 };
-    });
-    setDateOptions(options);
     setLastRefreshed(new Date().toLocaleTimeString());
   }, []);
 
@@ -80,20 +74,59 @@ export default function CalendarSlotPicker({
 
   // Initial and reactive fetch
   useEffect(() => {
-    if (selectedDate) {
+    if (selectedDate && selectedCourt?.id) {
       fetchBookings();
       setSelectedSlots([]); // reset selected slots on court or date switch
     }
-  }, [fetchBookings, selectedDate]);
+  }, [fetchBookings, selectedDate, selectedCourt?.id]);
 
   // Auto-refresh every 6 seconds for live real-time synchronization
   useEffect(() => {
-    if (!selectedDate) return;
+    if (!selectedDate || !selectedCourt?.id) return;
     const interval = setInterval(() => {
       fetchBookings();
     }, 6000);
     return () => clearInterval(interval);
-  }, [fetchBookings, selectedDate]);
+  }, [fetchBookings, selectedDate, selectedCourt?.id]);
+
+  // Date Navigation handlers
+  const handlePrevDay = () => {
+    if (!selectedDate) return;
+    const current = new Date(selectedDate);
+    current.setDate(current.getDate() - 1);
+    setSelectedDate(current.toISOString().split('T')[0]);
+  };
+
+  const handleNextDay = () => {
+    if (!selectedDate) return;
+    const current = new Date(selectedDate);
+    current.setDate(current.getDate() + 1);
+    setSelectedDate(current.toISOString().split('T')[0]);
+  };
+
+  const handleSetToday = () => {
+    const today = new Date().toISOString().split('T')[0];
+    setSelectedDate(today);
+  };
+
+  // Formatted human-readable date
+  const formattedDate = useMemo(() => {
+    if (!selectedDate) return '';
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const dateObj = new Date(y, m - 1, d);
+    return dateObj.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }, [selectedDate]);
+
+  const isToday = useMemo(() => {
+    if (!selectedDate) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return selectedDate === today;
+  }, [selectedDate]);
 
   // Check if a specific hour slot is already booked
   const isSlotBooked = (slotHourStr: string) => {
@@ -126,7 +159,7 @@ export default function CalendarSlotPicker({
   const endHour = lastSlot ? parseInt(lastSlot.split(':')[0], 10) + 1 : 0;
   const endTime = lastSlot ? `${endHour.toString().padStart(2, '0')}:00` : '';
   const durationHours = sortedSlots.length;
-  const totalAmount = durationHours * selectedCourt.hourlyRate;
+  const totalAmount = durationHours * (selectedCourt?.hourlyRate || 0);
 
   // Format 24h to 12h AM/PM
   const formatTime = (time: string) => {
@@ -139,25 +172,26 @@ export default function CalendarSlotPicker({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl">
+    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 md:p-8 shadow-2xl relative">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <h2 className="text-xl md:text-2xl font-black text-white">Select Date & Time</h2>
+            <span className="w-2.5 h-2.5 rounded-full bg-lime-400 animate-pulse" />
+            <h2 className="text-xl sm:text-2xl font-black text-white">Court Reservation</h2>
           </div>
-          <p className="text-sm text-slate-400 mt-1">
-            Reserving for <span className="font-semibold text-lime-400">{selectedCourt.name}</span> (₱{selectedCourt.hourlyRate}/hr)
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            Choose your court, select a date, and tap the available 1-hour time slots to book.
           </p>
         </div>
 
-        {/* Live status badge */}
+        {/* Live sync badge */}
         <div className="flex items-center gap-3">
           {lastRefreshed && (
             <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-700/60">
               <RefreshCw className={`w-3.5 h-3.5 text-lime-400 ${loadingBookings ? 'animate-spin' : ''}`} />
-              <span>Live Sync: {lastRefreshed}</span>
+              <span className="hidden sm:inline">Live Sync:</span>
+              <span>{lastRefreshed}</span>
             </div>
           )}
           <button
@@ -170,35 +204,122 @@ export default function CalendarSlotPicker({
         </div>
       </div>
 
-      {/* Date Carousel */}
+      {/* STEP 1: CONCISE COURTS SELECTOR */}
       <div className="mt-6">
         <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
-          <CalendarIcon className="w-4 h-4 text-lime-400" />
-          Choose Date
+          <Sparkles className="w-4 h-4 text-lime-400" />
+          Step 1 • Select Court
         </label>
-        <div className="flex gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-700">
-          {dateOptions.map((opt) => {
-            const isSelected = selectedDate === opt.dateStr;
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {courts.map((court) => {
+            const isSelected = selectedCourt?.id === court.id;
             return (
               <button
-                key={opt.dateStr}
-                onClick={() => setSelectedDate(opt.dateStr)}
-                className={`flex-shrink-0 flex flex-col items-center justify-center w-20 py-3 px-2 rounded-2xl border transition-all cursor-pointer ${
+                key={court.id}
+                type="button"
+                onClick={() => onSelectCourt(court)}
+                className={`p-4 rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
                   isSelected
-                    ? 'bg-lime-500 text-slate-950 border-lime-400 font-bold shadow-lg shadow-lime-500/20 scale-105'
-                    : 'bg-slate-800/60 hover:bg-slate-800 text-slate-300 border-slate-700/60 hover:border-slate-600'
+                    ? 'bg-slate-800/95 border-lime-400 ring-2 ring-lime-400/30 shadow-lg shadow-lime-500/10'
+                    : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-850'
                 }`}
               >
-                <span className={`text-[11px] font-semibold uppercase ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>
-                  {opt.isToday ? 'Today' : opt.dayName}
-                </span>
-                <span className="text-xl font-black my-0.5">{opt.dayNum}</span>
-                <span className={`text-[10px] ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>
-                  {opt.monthName}
-                </span>
+                {/* Header row */}
+                <div className="flex items-center justify-between w-full mb-2">
+                  <span className="font-black text-white text-base">
+                    {court.name}
+                  </span>
+                  {isSelected ? (
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-lime-500 text-slate-950 text-[10px] font-black">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                      <span>Active</span>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-medium">
+                      {court.surfaceType}
+                    </span>
+                  )}
+                </div>
+
+                {/* Pricing & description */}
+                <div className="flex items-baseline justify-between w-full mt-1">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-black text-lime-400">₱{court.hourlyRate}</span>
+                    <span className="text-xs text-slate-400 font-medium">/hr</span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 truncate max-w-[120px]">
+                    {court.surfaceType}
+                  </span>
+                </div>
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* STEP 2: DROPDOWN CALENDAR DATE PICKER */}
+      <div className="mt-7">
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+          <CalendarIcon className="w-4 h-4 text-lime-400" />
+          Step 2 • Choose Date
+        </label>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800/80">
+          {/* Day Navigation */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrevDay}
+              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+              title="Previous Day"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={handleSetToday}
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
+                isToday
+                  ? 'bg-lime-500/15 text-lime-400 border-lime-500/30'
+                  : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              Today
+            </button>
+
+            <button
+              onClick={handleNextDay}
+              className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+              title="Next Day"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+
+            <div className="ml-2">
+              <span className="text-base sm:text-lg font-black text-white block leading-tight">
+                {formattedDate}
+              </span>
+              <span className="text-[11px] text-slate-400">
+                {isToday ? 'Today\'s Schedule' : 'Selected Schedule'}
+              </span>
+            </div>
+          </div>
+
+          {/* Native Dropdown / Popover Calendar Button */}
+          <div className="relative">
+            <label className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 hover:border-slate-700 text-xs font-bold transition-all cursor-pointer">
+              <CalendarIcon className="w-4 h-4 text-lime-400" />
+              <span>Change Date</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) setSelectedDate(e.target.value);
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+            </label>
+          </div>
         </div>
       </div>
 
@@ -220,11 +341,11 @@ export default function CalendarSlotPicker({
         </div>
       </div>
 
-      {/* Time Slots Grid */}
+      {/* STEP 3: TIME SLOTS GRID */}
       <div className="mt-6">
         <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
           <Clock className="w-4 h-4 text-lime-400" />
-          Available 1-Hour Time Slots
+          Step 3 • Available 1-Hour Time Slots ({selectedCourt?.name})
         </label>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
@@ -274,7 +395,7 @@ export default function CalendarSlotPicker({
       </div>
 
       {/* Bottom Summary Bar */}
-      {selectedSlots.length > 0 && selectedDate && (
+      {selectedSlots.length > 0 && selectedDate && selectedCourt && (
         <div className="mt-8 p-5 bg-gradient-to-r from-slate-800 to-slate-850 rounded-2xl border border-lime-500/40 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-2">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -286,7 +407,7 @@ export default function CalendarSlotPicker({
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              {selectedDate} • {selectedCourt.name}
+              {selectedDate} • {selectedCourt.name} (₱{selectedCourt.hourlyRate}/hr)
             </p>
           </div>
 
