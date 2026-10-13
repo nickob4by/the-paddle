@@ -79,11 +79,31 @@ export async function POST(request: Request) {
       );
     }
 
-    if (paymentMethod === 'GCASH' && !receiptUrl) {
+    // Validate that booking is not in the past (using Philippine / local time UTC+8)
+    const nowUtc = new Date();
+    // Offset for UTC+8 (Philippines standard time)
+    const phTime = new Date(nowUtc.getTime() + (8 * 60 + nowUtc.getTimezoneOffset()) * 60000);
+    const phYear = phTime.getFullYear();
+    const phMonth = String(phTime.getMonth() + 1).padStart(2, '0');
+    const phDay = String(phTime.getDate()).padStart(2, '0');
+    const phTodayStr = `${phYear}-${phMonth}-${phDay}`;
+    const phHour = phTime.getHours();
+
+    if (bookingDate < phTodayStr) {
       return NextResponse.json(
-        { success: false, error: 'Payment screenshot is required for GCash bookings.' },
+        { success: false, error: 'Cannot book courts for past dates.' },
         { status: 400 }
       );
+    }
+
+    if (bookingDate === phTodayStr) {
+      const slotHour = parseInt(startTime.split(':')[0], 10);
+      if (slotHour < phHour) {
+        return NextResponse.json(
+          { success: false, error: 'Cannot book time slots that have already passed.' },
+          { status: 400 }
+        );
+      }
     }
 
     // Verify Court exists and is active

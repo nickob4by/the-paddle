@@ -42,9 +42,32 @@ export default function CalendarSlotPicker({
   const [openTime, setOpenTime] = useState<string>('06:00');
   const [closeTime, setCloseTime] = useState<string>('22:00');
 
+  // Helper to get local date string YYYY-MM-DD
+  const getTodayStr = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Helper to check if a specific hour on today has already elapsed
+  const isSlotInPast = (slotHourStr: string) => {
+    if (!selectedDate) return false;
+    const today = getTodayStr();
+    if (selectedDate < today) return true; // entire date is in the past
+    if (selectedDate > today) return false; // future date
+
+    // For today: check hour
+    const now = new Date();
+    const currentHour = now.getHours();
+    const slotHour = parseInt(slotHourStr.split(':')[0], 10);
+    return slotHour < currentHour;
+  };
+
   // Initialize today's date safely in useEffect and fetch settings
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr();
     setSelectedDate(today);
     setLastRefreshed(new Date().toLocaleTimeString());
 
@@ -108,21 +131,31 @@ export default function CalendarSlotPicker({
   // Date Navigation handlers
   const handlePrevDay = () => {
     if (!selectedDate) return;
-    const current = new Date(selectedDate);
+    const today = getTodayStr();
+    if (selectedDate <= today) return; // Prevent going before today
+
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const current = new Date(y, m - 1, d);
     current.setDate(current.getDate() - 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    const newY = current.getFullYear();
+    const newM = String(current.getMonth() + 1).padStart(2, '0');
+    const newD = String(current.getDate()).padStart(2, '0');
+    setSelectedDate(`${newY}-${newM}-${newD}`);
   };
 
   const handleNextDay = () => {
     if (!selectedDate) return;
-    const current = new Date(selectedDate);
+    const [y, m, d] = selectedDate.split('-').map(Number);
+    const current = new Date(y, m - 1, d);
     current.setDate(current.getDate() + 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
+    const newY = current.getFullYear();
+    const newM = String(current.getMonth() + 1).padStart(2, '0');
+    const newD = String(current.getDate()).padStart(2, '0');
+    setSelectedDate(`${newY}-${newM}-${newD}`);
   };
 
   const handleSetToday = () => {
-    const today = new Date().toISOString().split('T')[0];
-    setSelectedDate(today);
+    setSelectedDate(getTodayStr());
   };
 
   // Formatted human-readable date
@@ -140,8 +173,7 @@ export default function CalendarSlotPicker({
 
   const isToday = useMemo(() => {
     if (!selectedDate) return false;
-    const today = new Date().toISOString().split('T')[0];
-    return selectedDate === today;
+    return selectedDate === getTodayStr();
   }, [selectedDate]);
 
   // Check if a specific hour slot is already booked
@@ -158,7 +190,7 @@ export default function CalendarSlotPicker({
 
   // Toggle slot selection
   const handleSlotToggle = (slot: string) => {
-    if (isSlotBooked(slot)) return;
+    if (isSlotBooked(slot) || isSlotInPast(slot)) return;
 
     if (selectedSlots.includes(slot)) {
       setSelectedSlots(selectedSlots.filter((s) => s !== slot));
@@ -286,8 +318,13 @@ export default function CalendarSlotPicker({
           <div className="flex items-center gap-1.5 sm:gap-2">
             <button
               onClick={handlePrevDay}
-              className="p-2 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-slate-800 transition-colors cursor-pointer"
-              title="Previous Day"
+              disabled={isToday}
+              className={`p-2 rounded-xl border transition-colors ${
+                isToday
+                  ? 'bg-slate-100 dark:bg-slate-800/50 text-slate-300 dark:text-slate-600 border-slate-200 dark:border-slate-800/50 cursor-not-allowed opacity-50'
+                  : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white border border-slate-200 dark:border-slate-800 cursor-pointer'
+              }`}
+              title={isToday ? 'Cannot view past dates' : 'Previous Day'}
             >
               <ChevronLeft className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
@@ -328,9 +365,13 @@ export default function CalendarSlotPicker({
               <span>Change Date</span>
               <input
                 type="date"
+                min={getTodayStr()}
                 value={selectedDate}
                 onChange={(e) => {
-                  if (e.target.value) setSelectedDate(e.target.value);
+                  if (e.target.value) {
+                    const today = getTodayStr();
+                    setSelectedDate(e.target.value < today ? today : e.target.value);
+                  }
                 }}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
@@ -355,6 +396,10 @@ export default function CalendarSlotPicker({
           </div>
           <span className="text-rose-600 dark:text-rose-400">Reserved</span>
         </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-3 h-3 rounded-md bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 opacity-60" />
+          <span className="text-slate-400 dark:text-slate-500">Passed Hour</span>
+        </div>
       </div>
 
       {/* STEP 3: TIME SLOTS GRID */}
@@ -368,25 +413,38 @@ export default function CalendarSlotPicker({
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
           {timeSlots.map((slot) => {
             const booked = isSlotBooked(slot);
+            const inPast = isSlotInPast(slot);
             const isSelected = selectedSlots.includes(slot);
             const nextH = parseInt(slot.split(':')[0], 10) + 1;
             const slotEndStr = `${nextH.toString().padStart(2, '0')}:00`;
 
+            const isDisabled = booked || inPast;
+
             return (
               <button
                 key={slot}
-                disabled={booked}
+                disabled={isDisabled}
                 onClick={() => handleSlotToggle(slot)}
-                className={`relative group p-2.5 sm:p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[66px] sm:min-h-[74px] ${
-                  booked
-                    ? 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30 text-rose-400 dark:text-rose-300/40 cursor-not-allowed opacity-70'
-                    : isSelected
-                    ? 'bg-lime-500 border-lime-500 text-slate-950 font-bold shadow-md shadow-lime-500/20 scale-[1.02]'
-                    : 'bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-lime-500/50 text-slate-800 dark:text-slate-200'
+                className={`relative group p-2.5 sm:p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between min-h-[66px] sm:min-h-[74px] ${
+                  isSelected
+                    ? 'bg-lime-500 border-lime-500 text-slate-950 font-bold shadow-md shadow-lime-500/20 scale-[1.02] cursor-pointer'
+                    : booked
+                    ? 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30 text-rose-400 dark:text-rose-300/40 cursor-not-allowed opacity-75'
+                    : inPast
+                    ? 'bg-slate-100/70 dark:bg-slate-950/40 border-slate-200/80 dark:border-slate-900/80 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60'
+                    : 'bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-lime-500/50 text-slate-800 dark:text-slate-200 cursor-pointer'
                 }`}
               >
                 <div className="flex items-center justify-between w-full">
-                  <span className={`text-xs sm:text-sm font-bold ${isSelected ? 'text-slate-950' : booked ? 'text-rose-500/70 dark:text-rose-400/50 line-through' : 'text-slate-900 dark:text-white'}`}>
+                  <span className={`text-xs sm:text-sm font-bold ${
+                    isSelected
+                      ? 'text-slate-950'
+                      : booked
+                      ? 'text-rose-500/70 dark:text-rose-400/50 line-through'
+                      : inPast
+                      ? 'text-slate-400 dark:text-slate-600'
+                      : 'text-slate-900 dark:text-white'
+                  }`}>
                     {formatTime(slot)}
                   </span>
                   {isSelected && <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 stroke-[2.5]" />}
@@ -395,13 +453,24 @@ export default function CalendarSlotPicker({
                       Booked
                     </span>
                   )}
+                  {inPast && !booked && (
+                    <span className="text-[9px] sm:text-[10px] font-semibold tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-900/60 text-slate-400 dark:text-slate-500 border border-slate-300/60 dark:border-slate-800/60">
+                      Passed
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between w-full mt-1">
-                  <span className={`text-[10px] sm:text-[11px] ${isSelected ? 'text-slate-900 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <span className={`text-[10px] sm:text-[11px] ${
+                    isSelected
+                      ? 'text-slate-900 font-semibold'
+                      : inPast
+                      ? 'text-slate-400 dark:text-slate-600'
+                      : 'text-slate-500 dark:text-slate-400'
+                  }`}>
                     until {formatTime(slotEndStr)}
                   </span>
-                  {!booked && !isSelected && (
+                  {!booked && !inPast && !isSelected && (
                     <span className="text-[10px] sm:text-[11px] text-lime-600 dark:text-lime-400 font-medium">Available</span>
                   )}
                 </div>
