@@ -43,7 +43,9 @@ import {
   Minus,
   ShoppingCart,
   Package,
-  ArrowUpRight
+  ArrowUpRight,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -54,8 +56,8 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Active Tab: 'bookings' | 'proofs' | 'store' | 'analytics' | 'courts' | 'settings'
-  const [activeTab, setActiveTab] = useState<'bookings' | 'proofs' | 'store' | 'analytics' | 'courts' | 'settings'>('bookings');
+  // Active Tab: 'bookings' | 'proofs' | 'store' | 'courts' | 'settings'
+  const [activeTab, setActiveTab] = useState<'bookings' | 'proofs' | 'store' | 'courts' | 'settings'>('bookings');
 
   // Data states
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -132,6 +134,11 @@ export default function AdminPage() {
   const [uploadingQr, setUploadingQr] = useState(false);
   const [qrImgError, setQrImgError] = useState(false);
 
+  // Financial Analytics & Reporting states
+  const [timeFilter, setTimeFilter] = useState<'TODAY' | 'WEEK' | 'MONTH' | 'ALL'>('TODAY');
+  const [isAnalyticsExpanded, setIsAnalyticsExpanded] = useState<boolean>(true);
+  const [currentDate, setCurrentDate] = useState<Date | null>(null);
+
   // Check auth cookie/local storage
   const [todayStr, setTodayStr] = useState('');
   const [lastSynced, setLastSynced] = useState<string>('');
@@ -179,7 +186,9 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    setTodayStr(new Date().toISOString().split('T')[0]);
+    const today = new Date();
+    setCurrentDate(today);
+    setTodayStr(today.toISOString().split('T')[0]);
     const saved = localStorage.getItem('paddle_admin_logged_in');
     if (saved === 'true') {
       setIsAuthenticated(true);
@@ -883,20 +892,116 @@ export default function AdminPage() {
   const pendingPaymentCount = bookings.filter((b) => b.paymentStatus === 'VERIFICATION_PENDING' || b.paymentStatus === 'UNPAID').length;
   const pendingProofsCount = bookings.filter((b) => b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl)).length;
   
-  // Financial Breakdowns (Court vs Store)
+  // --- DYNAMIC FINANCIAL ANALYTICS (Day / Week / Month / All) ---
+  const getFilterStartDate = () => {
+    if (!currentDate) return '1970-01-01';
+    const d = new Date(currentDate.getTime());
+    if (timeFilter === 'TODAY') {
+      return todayStr || d.toISOString().split('T')[0];
+    }
+    if (timeFilter === 'WEEK') {
+      d.setDate(d.getDate() - 6); // Last 7 days
+      return d.toISOString().split('T')[0];
+    }
+    if (timeFilter === 'MONTH') {
+      d.setDate(1); // Start of current month
+      return d.toISOString().split('T')[0];
+    }
+    return '1970-01-01'; // ALL
+  };
+
+  const filterStartDateStr = getFilterStartDate();
+
+  // Filtered Bookings for the selected timeframe
+  const analyticsBookings = bookings.filter((b) => {
+    if (b.bookingStatus === 'CANCELLED') return false;
+    if (timeFilter === 'TODAY') return todayStr ? b.bookingDate === todayStr : true;
+    if (timeFilter === 'ALL') return true;
+    return b.bookingDate >= filterStartDateStr;
+  });
+
+  // Filtered Store Orders for the selected timeframe
+  const analyticsOrders = posOrders.filter((o) => {
+    if (!o.createdAt) return false;
+    const orderDate = o.createdAt.split('T')[0];
+    if (timeFilter === 'TODAY') return todayStr ? orderDate === todayStr : true;
+    if (timeFilter === 'ALL') return true;
+    return orderDate >= filterStartDateStr;
+  });
+
+  // Aggregated Revenues for the timeframe
+  const analyticsCourtRev = analyticsBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+  const analyticsStoreRev = analyticsOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const analyticsTotalRev = analyticsCourtRev + analyticsStoreRev;
+
+  // Payment method breakdowns (Cash vs GCash)
+  const analyticsCashCourt = analyticsBookings.filter((b) => b.paymentMethod === 'CASH').reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+  const analyticsCashStore = analyticsOrders.filter((o) => o.paymentMethod === 'CASH').reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const analyticsCashTotal = analyticsCashCourt + analyticsCashStore;
+
+  const analyticsGcashCourt = analyticsBookings.filter((b) => b.paymentMethod === 'GCASH').reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+  const analyticsGcashStore = analyticsOrders.filter((o) => o.paymentMethod === 'GCASH').reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const analyticsGcashTotal = analyticsGcashCourt + analyticsGcashStore;
+
+  // 7-Day or Hourly Chart Series generator
+  const chartDays: Array<{ label: string; dateStr: string; courtRev: number; storeRev: number; total: number }> = [];
+  if (timeFilter === 'TODAY') {
+    // Show 6 blocks of 4-hour intervals for today (e.g. 6AM-9AM, 10AM-1PM, 2PM-5PM, 6PM-9PM, 10PM-Midnight)
+    const intervals = [
+      { label: '6AM-9AM', startH: 6, endH: 9 },
+      { label: '10AM-1PM', startH: 10, endH: 13 },
+      { label: '2PM-5PM', startH: 14, endH: 17 },
+      { label: '6PM-9PM', startH: 18, endH: 21 },
+      { label: '10PM-12AM', startH: 22, endH: 24 }
+    ];
+    intervals.forEach(({ label, startH, endH }) => {
+      const cRev = analyticsBookings
+        .filter((b) => {
+          const h = parseInt((b.startTime || '0').split(':')[0], 10);
+          return h >= startH && h <= endH;
+        })
+        .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+
+      const sRev = analyticsOrders
+        .filter((o) => {
+          if (!o.createdAt) return false;
+          // Extract hour from ISO string without calling new Date()
+          const timePart = o.createdAt.split('T')[1] || '';
+          const h = parseInt(timePart.split(':')[0] || '0', 10);
+          return h >= startH && h <= endH;
+        })
+        .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+
+      chartDays.push({ label, dateStr: label, courtRev: cRev, storeRev: sRev, total: cRev + sRev });
+    });
+  } else if (currentDate) {
+    // Generate past 7 days bars safely using currentDate
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(currentDate.getTime());
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().split('T')[0];
+      const shortLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' });
+
+      const cRev = bookings
+        .filter((b) => b.bookingDate === dStr && b.bookingStatus !== 'CANCELLED')
+        .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+
+      const sRev = posOrders
+        .filter((o) => o.createdAt && o.createdAt.startsWith(dStr))
+        .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+
+      chartDays.push({ label: shortLabel, dateStr: dStr, courtRev: cRev, storeRev: sRev, total: cRev + sRev });
+    }
+  }
+
+  const maxChartBar = Math.max(...chartDays.map((c) => c.total), 100);
+
+  // All-time Grand Total Revenues
   const courtRevenue = bookings
     .filter((b) => b.bookingStatus !== 'CANCELLED')
     .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-
   const storeRevenue = posOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
   const combinedTotalRevenue = courtRevenue + storeRevenue;
-
-  // Today's breakdowns
-  const todayStoreOrders = posOrders.filter((o) => o.createdAt && o.createdAt.startsWith(todayStr));
-  const todayStoreRevenue = todayStoreOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-  const todayCourtBookings = bookings.filter((b) => b.bookingDate === todayStr && b.bookingStatus !== 'CANCELLED');
-  const todayCourtRevenue = todayCourtBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-  const todayCombinedRevenue = todayCourtRevenue + todayStoreRevenue;
 
   // Inventory stats
   const lowStockProducts = products.filter((p) => p.isActive === 1 && p.stock <= p.lowStockThreshold);
@@ -1135,52 +1240,260 @@ export default function AdminPage() {
 
       {/* Main Admin Content */}
       <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-5 sm:py-8 w-full flex-1">
-        {/* Statistics Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
-          <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px] sm:text-xs">
-              <span className="truncate">Total Bookings</span>
-              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-lime-600 dark:text-lime-400 flex-shrink-0" />
+        {/* Consolidated Executive Financial & Analytics Command Center */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-6 shadow-sm mb-6 sm:mb-8 transition-colors">
+          {/* Top Row: Title, Timeframe Filter Chips, & Collapse Toggle */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-lime-500/15 text-lime-600 dark:text-lime-400">
+                <BarChart3 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-slate-950 dark:text-white flex items-center gap-2">
+                  <span>Revenue & Operations Intelligence</span>
+                  <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-lime-500/15 text-lime-700 dark:text-lime-400 border border-lime-500/30">
+                    Live
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Real-time court bookings, mini store retail sales, and cash flow reconciliation.
+                </p>
+              </div>
             </div>
-            <span className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white mt-1 sm:mt-2 block">{bookings.length}</span>
+
+            {/* Timeframe Filter Controls & Expand/Collapse */}
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800">
+                {(['TODAY', 'WEEK', 'MONTH', 'ALL'] as const).map((tf) => (
+                  <button
+                    key={tf}
+                    onClick={() => setTimeFilter(tf)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      timeFilter === tf
+                        ? 'bg-white dark:bg-slate-900 text-lime-600 dark:text-lime-400 shadow-sm'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                    }`}
+                  >
+                    {tf === 'TODAY' ? 'Today' : tf === 'WEEK' ? '7 Days' : tf === 'MONTH' ? 'Month' : 'All Time'}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setIsAnalyticsExpanded(!isAnalyticsExpanded)}
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer"
+                title={isAnalyticsExpanded ? 'Collapse Chart' : 'Expand Chart'}
+              >
+                {isAnalyticsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
-          <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px] sm:text-xs">
-              <span className="truncate">Today&apos;s Bookings</span>
-              <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-            </div>
-            <span className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white mt-1 sm:mt-2 block">{todayBookingsCount}</span>
-          </div>
-
-          <div
-            onClick={() => setActiveTab('proofs')}
-            className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-amber-400/50 dark:hover:border-amber-500/50 transition-all"
-            title="Click to view Payment Proofs verification queue"
-          >
-            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px] sm:text-xs">
-              <span className="truncate">Pending Proofs</span>
-              <FileCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" />
-            </div>
-            <div className="flex items-center gap-2 mt-1 sm:mt-2">
-              <span className="text-xl sm:text-2xl font-black text-amber-500 dark:text-amber-400 block">{pendingProofsCount}</span>
-              {pendingProofsCount > 0 && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 animate-pulse">
-                  Action Required
+          {/* KPI Metrics Cards (Recalculates based on Timeframe Filter) */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {/* Total Filtered Revenue */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-lime-500/10 via-white to-white dark:from-lime-500/10 dark:via-slate-900 dark:to-slate-900 border border-lime-500/30 shadow-sm">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
+                <span className="font-bold text-lime-700 dark:text-lime-400 uppercase tracking-wide">
+                  {timeFilter === 'TODAY' ? "Today's Revenue" : timeFilter === 'WEEK' ? '7-Day Revenue' : timeFilter === 'MONTH' ? 'Monthly Revenue' : 'All-Time Revenue'}
                 </span>
-              )}
+                <DollarSign className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+              </div>
+              <span className="text-2xl sm:text-3xl font-black text-slate-950 dark:text-white mt-1.5 block">
+                ₱{analyticsTotalRev.toLocaleString()}
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
+                Courts: ₱{analyticsCourtRev.toLocaleString()} • Store: ₱{analyticsStoreRev.toLocaleString()}
+              </span>
+            </div>
+
+            {/* Court Rentals Revenue */}
+            <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
+                <span className="font-semibold uppercase tracking-wide">Court Rentals</span>
+                <Calendar className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+              </div>
+              <span className="text-2xl sm:text-3xl font-black text-lime-600 dark:text-lime-400 mt-1.5 block">
+                ₱{analyticsCourtRev.toLocaleString()}
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
+                {analyticsBookings.length} bookings confirmed
+              </span>
+            </div>
+
+            {/* Mini Store Sales */}
+            <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
+                <span className="font-semibold uppercase tracking-wide">Mini Store Sales</span>
+                <ShoppingBag className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+              </div>
+              <span className="text-2xl sm:text-3xl font-black text-teal-600 dark:text-teal-400 mt-1.5 block">
+                ₱{analyticsStoreRev.toLocaleString()}
+              </span>
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
+                {analyticsOrders.length} retail orders processed
+              </span>
+            </div>
+
+            {/* Cash vs GCash Flow */}
+            <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 shadow-sm">
+              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
+                <span className="font-semibold uppercase tracking-wide">Payment Mix</span>
+                <TrendingUp className="w-3.5 h-3.5 text-blue-500" />
+              </div>
+              <div className="flex items-baseline gap-2 mt-1.5">
+                <span className="text-lg sm:text-xl font-black text-emerald-600">
+                  ₱{analyticsCashTotal.toLocaleString()}
+                </span>
+                <span className="text-xs text-slate-400 font-normal">Cash</span>
+              </div>
+              <div className="flex items-center justify-between text-[10px] text-blue-600 dark:text-blue-400 mt-1 font-semibold">
+                <span>GCash: ₱{analyticsGcashTotal.toLocaleString()}</span>
+                {pendingProofsCount > 0 && (
+                  <span
+                    onClick={() => setActiveTab('proofs')}
+                    className="text-amber-500 hover:underline cursor-pointer font-bold"
+                  >
+                    {pendingProofsCount} to review →
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
-          <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px] sm:text-xs">
-              <span className="truncate">Total Revenue</span>
-              <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-teal-600 dark:text-teal-400 flex-shrink-0" />
+          {/* Collapsible Visual Graphs & Breakdown Row */}
+          {isAnalyticsExpanded && (
+            <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 lg:grid-cols-12 gap-5 animate-in fade-in duration-300">
+              {/* Dual-Series Bar Graph (Lime for Courts, Teal for Store) - 8 Columns */}
+              <div className="lg:col-span-8 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      {timeFilter === 'TODAY' ? "Today's Revenue by Time Window" : 'Daily Revenue Trends'}
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-normal">
+                      (Court Rentals + Mini Store)
+                    </span>
+                  </div>
+
+                  {/* Graph Legend */}
+                  <div className="flex items-center gap-3 text-[11px] font-semibold">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-lime-500" />
+                      <span className="text-slate-600 dark:text-slate-400">Courts</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-sm bg-teal-500" />
+                      <span className="text-slate-600 dark:text-slate-400">Store</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bar Graph Canvas */}
+                <div className="h-44 sm:h-48 w-full rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4 flex items-end justify-between gap-2 sm:gap-4">
+                  {chartDays.map((bar, idx) => {
+                    const courtHeight = maxChartBar > 0 ? (bar.courtRev / maxChartBar) * 100 : 0;
+                    const storeHeight = maxChartBar > 0 ? (bar.storeRev / maxChartBar) * 100 : 0;
+
+                    return (
+                      <div key={idx} className="flex-1 flex flex-col items-center h-full justify-end group">
+                        {/* Hover Tooltip */}
+                        <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-950 text-white text-[10px] rounded-lg px-2 py-1 mb-1 pointer-events-none whitespace-nowrap shadow-lg z-10 font-mono">
+                          ₱{bar.total.toLocaleString()}
+                        </div>
+
+                        {/* Stacked / Grouped Bars */}
+                        <div className="w-full max-w-[32px] flex items-end justify-center gap-0.5 sm:gap-1 h-[75%]">
+                          {/* Court Bar */}
+                          <div
+                            style={{ height: `${Math.max(courtHeight, 4)}%` }}
+                            className="w-1/2 bg-lime-500 rounded-t-md transition-all duration-300 group-hover:brightness-110"
+                            title={`Courts: ₱${bar.courtRev}`}
+                          />
+                          {/* Store Bar */}
+                          <div
+                            style={{ height: `${Math.max(storeHeight, 4)}%` }}
+                            className="w-1/2 bg-teal-500 rounded-t-md transition-all duration-300 group-hover:brightness-110"
+                            title={`Store: ₱${bar.storeRev}`}
+                          />
+                        </div>
+
+                        {/* X-Axis Label */}
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-2 truncate w-full text-center">
+                          {bar.label}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Stream Share & Quick Inventory Alerts - 4 Columns */}
+              <div className="lg:col-span-4 flex flex-col justify-between space-y-4">
+                {/* Revenue Share Progress Bar */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-2.5">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                    Income Distribution
+                  </span>
+
+                  <div className="h-4 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 flex">
+                    <div
+                      style={{ width: `${analyticsTotalRev > 0 ? (analyticsCourtRev / analyticsTotalRev) * 100 : 50}%` }}
+                      className="bg-lime-500 transition-all duration-500"
+                    />
+                    <div
+                      style={{ width: `${analyticsTotalRev > 0 ? (analyticsStoreRev / analyticsTotalRev) * 100 : 50}%` }}
+                      className="bg-teal-500 transition-all duration-500"
+                    />
+                  </div>
+
+                  <div className="flex justify-between text-xs pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-lime-500" />
+                      <span className="text-slate-600 dark:text-slate-400">Courts:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {analyticsTotalRev > 0 ? Math.round((analyticsCourtRev / analyticsTotalRev) * 100) : 0}%
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-teal-500" />
+                      <span className="text-slate-600 dark:text-slate-400">Store:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {analyticsTotalRev > 0 ? Math.round((analyticsStoreRev / analyticsTotalRev) * 100) : 0}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Low Stock Warning or All Stocked Status */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                      Store Inventory Status
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {lowStockCount > 0 ? `${lowStockCount} items at low stock` : 'All items sufficiently stocked'}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setActiveTab('store');
+                      setStoreSubTab('inventory');
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      lowStockCount > 0
+                        ? 'bg-rose-500 text-white hover:bg-rose-600 shadow-sm animate-pulse'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300'
+                    }`}
+                  >
+                    {lowStockCount > 0 ? 'Restock Now' : 'View Store'}
+                  </button>
+                </div>
+              </div>
             </div>
-            <span className="text-xl sm:text-2xl font-black text-lime-600 dark:text-lime-400 mt-1 sm:mt-2 block">
-              ₱{combinedTotalRevenue.toLocaleString()}
-            </span>
-          </div>
+          )}
         </div>
 
         {/* Tab Navigation - Scrollable on mobile */}
@@ -1231,17 +1544,6 @@ export default function AdminPage() {
             )}
           </button>
 
-          <button
-            onClick={() => setActiveTab('analytics')}
-            className={`px-3 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
-              activeTab === 'analytics'
-                ? 'border-lime-500 text-lime-600 dark:text-lime-400'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            <span>Income & Reports</span>
-          </button>
 
           <button
             onClick={() => setActiveTab('courts')}
@@ -2266,193 +2568,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 1.9: FINANCIAL ANALYTICS & MONITORING */}
-        {activeTab === 'analytics' && (
-          <div className="space-y-6 animate-in fade-in duration-200">
-            {/* Header */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-lime-500/15 text-lime-600 dark:text-lime-400">
-                  <BarChart3 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-slate-950 dark:text-white">
-                    Overall Income & Revenue Monitoring
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Unified financial reports combining Court Bookings and Mini Store retail sales.
-                  </p>
-                </div>
-              </div>
-            </div>
 
-            {/* Income Big KPI Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Grand Total Revenue */}
-              <div className="p-5 rounded-2xl bg-gradient-to-br from-lime-500/10 via-white to-white dark:from-lime-500/10 dark:via-slate-900 dark:to-slate-900 border border-lime-500/30 shadow-sm">
-                <span className="text-xs font-bold text-lime-700 dark:text-lime-400 uppercase tracking-wider block">
-                  Combined Total Revenue
-                </span>
-                <span className="text-3xl font-black text-slate-950 dark:text-white mt-2 block">
-                  ₱{combinedTotalRevenue.toLocaleString()}
-                </span>
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  Courts (₱{courtRevenue.toLocaleString()}) + Store (₱{storeRevenue.toLocaleString()})
-                </span>
-              </div>
-
-              {/* Court Bookings Revenue */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                  Court Bookings Revenue
-                </span>
-                <span className="text-3xl font-black text-lime-600 dark:text-lime-400 mt-2 block">
-                  ₱{courtRevenue.toLocaleString()}
-                </span>
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  {bookings.filter((b) => b.bookingStatus !== 'CANCELLED').length} total reservations
-                </span>
-              </div>
-
-              {/* Mini Store Sales */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                  Mini Store Retail Sales
-                </span>
-                <span className="text-3xl font-black text-teal-600 dark:text-teal-400 mt-2 block">
-                  ₱{storeRevenue.toLocaleString()}
-                </span>
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  {posOrders.length} front-desk retail orders
-                </span>
-              </div>
-
-              {/* Today's Cash Flow */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">
-                  Today&apos;s Income
-                </span>
-                <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-2 block">
-                  ₱{todayCombinedRevenue.toLocaleString()}
-                </span>
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  Courts: ₱{todayCourtRevenue.toLocaleString()} | Store: ₱{todayStoreRevenue.toLocaleString()}
-                </span>
-              </div>
-            </div>
-
-            {/* Visual Revenue Breakdown Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
-              {/* Left Box: Revenue Distribution */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm">
-                <h4 className="font-bold text-sm text-slate-950 dark:text-white mb-4">
-                  Revenue Stream Breakdown
-                </h4>
-
-                <div className="space-y-4">
-                  {/* Progress bar */}
-                  <div className="h-5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 flex">
-                    <div
-                      style={{ width: `${combinedTotalRevenue > 0 ? (courtRevenue / combinedTotalRevenue) * 100 : 50}%` }}
-                      className="bg-lime-500 transition-all duration-500"
-                      title="Court Bookings"
-                    />
-                    <div
-                      style={{ width: `${combinedTotalRevenue > 0 ? (storeRevenue / combinedTotalRevenue) * 100 : 50}%` }}
-                      className="bg-teal-500 transition-all duration-500"
-                      title="Mini Store"
-                    />
-                  </div>
-
-                  {/* Legend */}
-                  <div className="grid grid-cols-2 gap-4 pt-2">
-                    <div className="p-3 rounded-xl bg-lime-500/10 border border-lime-500/20">
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-full bg-lime-500" />
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">Court Bookings</span>
-                      </div>
-                      <span className="text-lg font-black text-lime-600 dark:text-lime-400 block mt-1">
-                        {combinedTotalRevenue > 0 ? Math.round((courtRevenue / combinedTotalRevenue) * 100) : 0}%
-                      </span>
-                      <span className="text-[11px] text-slate-500">₱{courtRevenue.toLocaleString()}</span>
-                    </div>
-
-                    <div className="p-3 rounded-xl bg-teal-500/10 border border-teal-500/20">
-                      <div className="flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-full bg-teal-500" />
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">Mini Store</span>
-                      </div>
-                      <span className="text-lg font-black text-teal-600 dark:text-teal-400 block mt-1">
-                        {combinedTotalRevenue > 0 ? Math.round((storeRevenue / combinedTotalRevenue) * 100) : 0}%
-                      </span>
-                      <span className="text-[11px] text-slate-500">₱{storeRevenue.toLocaleString()}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Box: Inventory Health & Alerts */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col justify-between">
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="font-bold text-sm text-slate-950 dark:text-white">
-                      Inventory Alerts & Restock Needs
-                    </h4>
-                    <span className="text-xs font-bold text-rose-500">
-                      {lowStockCount} items need attention
-                    </span>
-                  </div>
-
-                  {lowStockProducts.length === 0 ? (
-                    <div className="p-6 text-center text-slate-400">
-                      <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-1.5" />
-                      <p className="text-xs font-bold text-slate-900 dark:text-white">All products well-stocked!</p>
-                      <p className="text-[11px] text-slate-400 mt-0.5">No items are below their minimum threshold.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-                      {lowStockProducts.map((p) => (
-                        <div
-                          key={p.id}
-                          className="p-2.5 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 flex items-center justify-between"
-                        >
-                          <div>
-                            <span className="text-xs font-bold text-slate-900 dark:text-white block">{p.name}</span>
-                            <span className="text-[10px] text-rose-600 dark:text-rose-400">
-                              Only {p.stock} units left (Threshold: {p.lowStockThreshold})
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setActiveTab('store');
-                              setStoreSubTab('inventory');
-                            }}
-                            className="px-2.5 py-1 rounded-lg bg-rose-500 text-white font-bold text-[10px] hover:bg-rose-600 cursor-pointer"
-                          >
-                            Restock →
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
-                  <span>Total Active Catalog Items: {products.length}</span>
-                  <button
-                    onClick={() => {
-                      setActiveTab('store');
-                      setStoreSubTab('pos');
-                    }}
-                    className="font-bold text-lime-600 dark:text-lime-400 hover:underline cursor-pointer"
-                  >
-                    Open Store POS →
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* TAB 2: COURTS MANAGEMENT */}
         {activeTab === 'courts' && (
