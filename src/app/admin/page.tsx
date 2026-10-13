@@ -58,6 +58,14 @@ export default function AdminPage() {
   const [newCourtDesc, setNewCourtDesc] = useState('');
   const [courtSubmitting, setCourtSubmitting] = useState(false);
 
+  // Edit Court Modal
+  const [editingCourt, setEditingCourt] = useState<Court | null>(null);
+  const [editCourtName, setEditCourtName] = useState('');
+  const [editCourtRate, setEditCourtRate] = useState('');
+  const [editCourtSurface, setEditCourtSurface] = useState('');
+  const [editCourtDesc, setEditCourtDesc] = useState('');
+  const [editCourtSubmitting, setEditCourtSubmitting] = useState(false);
+
   // View Receipt Modal
   const [viewReceiptUrl, setViewReceiptUrl] = useState<string | null>(null);
 
@@ -224,6 +232,49 @@ export default function AdminPage() {
       console.error(err);
     } finally {
       setCourtSubmitting(false);
+    }
+  };
+
+  // Open Edit Court Modal
+  const openEditCourtModal = (court: Court) => {
+    setEditingCourt(court);
+    setEditCourtName(court.name);
+    setEditCourtRate(court.hourlyRate.toString());
+    setEditCourtSurface(court.surfaceType || 'Pro Cushion Indoor');
+    setEditCourtDesc(court.description || '');
+  };
+
+  // Submit Court Edit
+  const handleUpdateCourt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCourt || !editCourtName.trim() || !editCourtRate) return;
+
+    try {
+      setEditCourtSubmitting(true);
+      const res = await fetch(`/api/courts/${editingCourt.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editCourtName.trim(),
+          hourlyRate: Number(editCourtRate),
+          surfaceType: editCourtSurface.trim(),
+          description: editCourtDesc.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success && data.court) {
+        setCourts((prev) =>
+          prev.map((c) => (c.id === editingCourt.id ? data.court : c))
+        );
+        setEditingCourt(null);
+      } else {
+        alert(data.error || 'Failed to update court');
+      }
+    } catch (err) {
+      console.error('Error updating court:', err);
+      alert('Failed to update court');
+    } finally {
+      setEditCourtSubmitting(false);
     }
   };
 
@@ -806,21 +857,33 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between">
+                  <div className="mt-6 pt-4 border-t border-slate-800 flex items-center justify-between gap-2">
                     <button
                       onClick={() => handleToggleCourtActive(court)}
                       className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
                     >
-                      {court.isActive === 1 ? 'Disable from booking' : 'Enable court'}
+                      {court.isActive === 1 ? 'Disable' : 'Enable'}
                     </button>
 
-                    <button
-                      onClick={() => handleDeleteCourt(court.id)}
-                      className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 px-2 py-1 rounded bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/40 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => openEditCourtModal(court)}
+                        className="flex items-center gap-1 text-xs text-lime-400 hover:text-lime-300 px-2.5 py-1.5 rounded-lg bg-lime-500/10 hover:bg-lime-500/20 border border-lime-500/30 transition-colors cursor-pointer font-bold"
+                        title="Edit court details and price"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeleteCourt(court.id)}
+                        className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 px-2.5 py-1.5 rounded-lg bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/40 transition-colors cursor-pointer"
+                        title="Delete court"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1108,6 +1171,95 @@ export default function AdminPage() {
                 className="max-h-[65vh] w-auto object-contain rounded-lg"
               />
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Court Modal */}
+      {editingCourt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-sm overflow-hidden">
+          <div className="relative w-full max-w-md max-h-[92dvh] bg-slate-900 border border-slate-800 rounded-2xl sm:rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="flex-shrink-0 flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-lime-400" />
+                <h3 className="text-base sm:text-lg font-bold text-white">Edit Court Details</h3>
+              </div>
+              <button
+                onClick={() => setEditingCourt(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateCourt} className="flex-1 overflow-y-auto mt-4 space-y-4 pr-1 scrollbar-thin scrollbar-thumb-slate-700">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Court Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Court 1 (Indoor Pro)"
+                  value={editCourtName}
+                  onChange={(e) => setEditCourtName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-lime-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Hourly Rate (₱)</label>
+                <input
+                  type="number"
+                  required
+                  min="0"
+                  placeholder="e.g. 500"
+                  value={editCourtRate}
+                  onChange={(e) => setEditCourtRate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-lime-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Surface Type</label>
+                <select
+                  value={editCourtSurface}
+                  onChange={(e) => setEditCourtSurface(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-lime-400"
+                >
+                  <option value="Pro Cushion Indoor">Pro Cushion Indoor</option>
+                  <option value="Covered Acrylic">Covered Acrylic</option>
+                  <option value="Outdoor Hardcourt">Outdoor Hardcourt</option>
+                  <option value="Championship Acrylic">Championship Acrylic</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  placeholder="Court details, lighting, or special features..."
+                  value={editCourtDesc}
+                  onChange={(e) => setEditCourtDesc(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-lime-400"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingCourt(null)}
+                  className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold hover:bg-slate-750 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editCourtSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs shadow-lg shadow-lime-500/20 transition-all cursor-pointer"
+                >
+                  {editCourtSubmitting ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
