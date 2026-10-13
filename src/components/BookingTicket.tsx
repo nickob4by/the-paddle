@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { Booking } from '@/lib/types';
-import { CheckCircle2, Copy, Check, Printer, Calendar, Clock, MapPin, User, Phone, CreditCard } from 'lucide-react';
+import { CheckCircle2, Copy, Check, Printer, Calendar, Clock, MapPin, User, Phone, CreditCard, XCircle } from 'lucide-react';
 
 interface BookingTicketProps {
   booking: Booking;
@@ -34,14 +34,36 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Success banner */}
+      {/* Dynamic Status banner */}
       <div className="text-center py-1 sm:py-2">
-        <div className="w-12 h-12 sm:w-14 sm:h-14 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-lg shadow-emerald-500/10">
-          <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8" />
+        <div className={`w-12 h-12 sm:w-14 sm:h-14 border rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 shadow-lg ${
+          booking.bookingStatus === 'CONFIRMED'
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 shadow-emerald-500/10'
+            : booking.bookingStatus === 'CANCELLED'
+            ? 'bg-rose-500/10 border-rose-500/30 text-rose-600 dark:text-rose-400 shadow-rose-500/10'
+            : 'bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400 shadow-amber-500/10'
+        }`}>
+          {booking.bookingStatus === 'CONFIRMED' ? (
+            <CheckCircle2 className="w-7 h-7 sm:w-8 sm:h-8" />
+          ) : booking.bookingStatus === 'CANCELLED' ? (
+            <XCircle className="w-7 h-7 sm:w-8 sm:h-8" />
+          ) : (
+            <Clock className="w-7 h-7 sm:w-8 sm:h-8" />
+          )}
         </div>
-        <h3 className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white">Court Reserved Successfully!</h3>
+        <h3 className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white">
+          {booking.bookingStatus === 'CONFIRMED'
+            ? 'Reservation Confirmed!'
+            : booking.bookingStatus === 'CANCELLED'
+            ? 'Reservation Cancelled'
+            : 'Reservation Submitted (Pending Verification)'}
+        </h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-          Your court slot has been locked in the calendar. Please save your booking code.
+          {booking.bookingStatus === 'CONFIRMED'
+            ? 'Your payment has been verified. Your court slot is guaranteed.'
+            : booking.bookingStatus === 'CANCELLED'
+            ? 'This booking was cancelled or the payment proof was rejected. Slot released.'
+            : 'Your payment screenshot is awaiting front-desk verification. Your court slot is held.'}
         </p>
       </div>
 
@@ -93,8 +115,14 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
               Status
             </span>
-            <span className="inline-block mt-0.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
-              {booking.bookingStatus}
+            <span className={`inline-block mt-0.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider border ${
+              booking.bookingStatus === 'CONFIRMED'
+                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                : booking.bookingStatus === 'CANCELLED'
+                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30'
+                : 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/30'
+            }`}>
+              {booking.bookingStatus === 'PENDING' ? 'PENDING VERIFICATION' : booking.bookingStatus}
             </span>
           </div>
         </div>

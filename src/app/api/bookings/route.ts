@@ -154,7 +154,7 @@ export async function POST(request: Request) {
     const id = 'book-' + crypto.randomUUID().slice(0, 8);
     const createdAt = new Date().toISOString();
 
-    let bookingStatus = 'CONFIRMED';
+    let bookingStatus = paymentMethod === 'GCASH' ? 'PENDING' : 'CONFIRMED';
     let paymentStatus = paymentMethod === 'GCASH' ? 'VERIFICATION_PENDING' : 'UNPAID';
 
     // Calculate discrete hour slots for atomic locking
