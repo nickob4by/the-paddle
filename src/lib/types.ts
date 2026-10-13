@@ -41,3 +41,41 @@ export interface SystemSettings {
   adminPin: string;
   updatedAt: string;
 }
+
+export interface Product {
+  id: string;
+  name: string;
+  category: 'DRINKS' | 'BALLS_GEAR' | 'RENTALS' | 'SNACKS' | 'OTHER';
+  price: number; // Retail selling price PHP
+  costPrice?: number; // Cost PHP
+  stock: number;
+  lowStockThreshold: number;
+  imageUrl?: string;
+  isActive: number;
+  createdAt: string;
+}
+
+export interface PosOrderItem {
+  id: string;
+  orderId: string;
+  productId: string;
+  productName: string;
+  unitPrice: number;
+  quantity: number;
+  subtotal: number;
+}
+
+export interface PosOrder {
+  id: string;
+  orderNumber: string; // e.g. "POS-1042"
+  totalAmount: number;
+  paymentMethod: 'CASH' | 'GCASH';
+  cashTendered?: number;
+  changeGiven?: number;
+  gcashReference?: string;
+  bookingId?: string;
+  notes?: string;
+  createdAt: string;
+  items?: PosOrderItem[];
+}
+

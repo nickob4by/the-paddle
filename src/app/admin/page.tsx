@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Court, Booking, SystemSettings } from '@/lib/types';
+import { Court, Booking, SystemSettings, Product, PosOrder } from '@/lib/types';
 import {
   ShieldCheck,
   Calendar,
@@ -37,7 +37,13 @@ import {
   Receipt,
   ExternalLink,
   ZoomIn,
-  Info
+  Info,
+  ShoppingBag,
+  BarChart3,
+  Minus,
+  ShoppingCart,
+  Package,
+  ArrowUpRight
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -48,8 +54,8 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Active Tab: 'bookings' | 'proofs' | 'courts' | 'settings'
-  const [activeTab, setActiveTab] = useState<'bookings' | 'proofs' | 'courts' | 'settings'>('bookings');
+  // Active Tab: 'bookings' | 'proofs' | 'store' | 'analytics' | 'courts' | 'settings'
+  const [activeTab, setActiveTab] = useState<'bookings' | 'proofs' | 'store' | 'analytics' | 'courts' | 'settings'>('bookings');
 
   // Data states
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -87,6 +93,33 @@ export default function AdminPage() {
   const [proofActionLoading, setProofActionLoading] = useState(false);
   const [proofNotes, setProofNotes] = useState('');
   const [copiedRef, setCopiedRef] = useState(false);
+
+  // Store, POS & Inventory states
+  const [products, setProducts] = useState<Product[]>([]);
+  const [posOrders, setPosOrders] = useState<PosOrder[]>([]);
+  const [storeSubTab, setStoreSubTab] = useState<'pos' | 'inventory' | 'history'>('pos');
+  const [posCategoryFilter, setPosCategoryFilter] = useState<string>('ALL');
+  const [posSearchQuery, setPosSearchQuery] = useState('');
+  
+  // POS Cart State
+  const [cart, setCart] = useState<Array<{ product: Product; quantity: number }>>([]);
+  const [posPaymentMethod, setPosPaymentMethod] = useState<'CASH' | 'GCASH'>('CASH');
+  const [posCashTendered, setPosCashTendered] = useState<string>('');
+  const [posGcashRef, setPosGcashRef] = useState('');
+  const [posSelectedBookingId, setPosSelectedBookingId] = useState('');
+  const [posCheckoutLoading, setPosCheckoutLoading] = useState(false);
+  const [lastCheckoutOrder, setLastCheckoutOrder] = useState<PosOrder | null>(null);
+
+  // Product Add / Edit Modal states
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [prodFormName, setProdFormName] = useState('');
+  const [prodFormCategory, setProdFormCategory] = useState<'DRINKS' | 'BALLS_GEAR' | 'RENTALS' | 'SNACKS' | 'OTHER'>('DRINKS');
+  const [prodFormPrice, setProdFormPrice] = useState('');
+  const [prodFormCostPrice, setProdFormCostPrice] = useState('');
+  const [prodFormStock, setProdFormStock] = useState('20');
+  const [prodFormLowStock, setProdFormLowStock] = useState('5');
+  const [productSubmitting, setProductSubmitting] = useState(false);
 
   // Settings form states
   const [settingsQrUrl, setSettingsQrUrl] = useState('');
@@ -218,6 +251,20 @@ export default function AdminPage() {
           setSettingsOpenTime(settingsData.settings.courtOpenTime || '06:00');
           setSettingsCloseTime(settingsData.settings.courtCloseTime || '22:00');
         }
+      }
+
+      // Fetch products
+      const productsRes = await fetch('/api/products?all=true');
+      const productsData = await productsRes.json();
+      if (productsData.success) {
+        setProducts(productsData.products || []);
+      }
+
+      // Fetch POS orders
+      const posRes = await fetch('/api/pos/orders');
+      const posData = await posRes.json();
+      if (posData.success) {
+        setPosOrders(posData.orders || []);
       }
 
       setLastSynced(new Date().toLocaleTimeString());
@@ -382,6 +429,228 @@ export default function AdminPage() {
       console.error(err);
     } finally {
       setProofActionLoading(false);
+    }
+  };
+
+  // --- POS CART ACTIONS ---
+  const addToCart = (product: Product) => {
+    if (product.stock <= 0) {
+      alert(`${product.name} is currently out of stock!`);
+      return;
+    }
+    setCart((prev) => {
+      const existing = prev.find((item) => item.product.id === product.id);
+      if (existing) {
+        if (existing.quantity >= product.stock) {
+          alert(`Cannot add more than available stock (${product.stock})`);
+          return prev;
+        }
+        return prev.map((item) =>
+          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      }
+      return [...prev, { product, quantity: 1 }];
+    });
+  };
+
+  const updateCartQuantity = (productId: string, delta: number) => {
+    setCart((prev) => {
+      return prev
+        .map((item) => {
+          if (item.product.id === productId) {
+            const nextQty = item.quantity + delta;
+            if (nextQty > item.product.stock) {
+              alert(`Cannot exceed available stock (${item.product.stock})`);
+              return item;
+            }
+            return { ...item, quantity: nextQty };
+          }
+          return item;
+        })
+        .filter((item) => item.quantity > 0);
+    });
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+    setPosCashTendered('');
+    setPosGcashRef('');
+    setPosSelectedBookingId('');
+  };
+
+  const cartTotal = cart.reduce((sum, it) => sum + it.product.price * it.quantity, 0);
+  const changeDue = posPaymentMethod === 'CASH' && posCashTendered
+    ? Math.max(0, Number(posCashTendered) - cartTotal)
+    : 0;
+
+  // Submit POS Checkout
+  const handlePosCheckout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cart.length === 0) return;
+
+    if (posPaymentMethod === 'CASH') {
+      const tendered = Number(posCashTendered);
+      if (isNaN(tendered) || tendered < cartTotal) {
+        alert(`Insufficient cash tendered. Total is ₱${cartTotal.toLocaleString()}.`);
+        return;
+      }
+    }
+
+    try {
+      setPosCheckoutLoading(true);
+      const itemsPayload = cart.map((it) => ({
+        productId: it.product.id,
+        productName: it.product.name,
+        unitPrice: it.product.price,
+        quantity: it.quantity,
+        subtotal: it.product.price * it.quantity
+      }));
+
+      const res = await fetch('/api/pos/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items: itemsPayload,
+          paymentMethod: posPaymentMethod,
+          cashTendered: posPaymentMethod === 'CASH' ? Number(posCashTendered) : null,
+          changeGiven: posPaymentMethod === 'CASH' ? changeDue : null,
+          gcashReference: posPaymentMethod === 'GCASH' ? posGcashRef.trim() : null,
+          bookingId: posSelectedBookingId || null
+        })
+      });
+
+      const data = await res.json();
+      if (data.success && data.order) {
+        setLastCheckoutOrder(data.order);
+        // Refresh product stock and order list
+        setPosOrders((prev) => [data.order, ...prev]);
+        setProducts((prev) =>
+          prev.map((p) => {
+            const bought = cart.find((c) => c.product.id === p.id);
+            return bought ? { ...p, stock: Math.max(0, p.stock - bought.quantity) } : p;
+          })
+        );
+        clearCart();
+        if (soundEnabled) playChime();
+      } else {
+        alert(data.error || 'Failed to complete checkout');
+      }
+    } catch (err) {
+      console.error('POS Checkout failed:', err);
+      alert('Checkout failed. Please try again.');
+    } finally {
+      setPosCheckoutLoading(false);
+    }
+  };
+
+  // --- PRODUCT INVENTORY ACTIONS ---
+  const openNewProductModal = () => {
+    setEditingProduct(null);
+    setProdFormName('');
+    setProdFormCategory('DRINKS');
+    setProdFormPrice('');
+    setProdFormCostPrice('');
+    setProdFormStock('20');
+    setProdFormLowStock('5');
+    setIsProductModalOpen(true);
+  };
+
+  const openEditProductModal = (product: Product) => {
+    setEditingProduct(product);
+    setProdFormName(product.name);
+    setProdFormCategory(product.category);
+    setProdFormPrice(product.price.toString());
+    setProdFormCostPrice((product.costPrice || 0).toString());
+    setProdFormStock(product.stock.toString());
+    setProdFormLowStock(product.lowStockThreshold.toString());
+    setIsProductModalOpen(true);
+  };
+
+  const handleSaveProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!prodFormName.trim() || !prodFormPrice) return;
+
+    try {
+      setProductSubmitting(true);
+      if (editingProduct) {
+        // Update product
+        const res = await fetch(`/api/products/${editingProduct.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: prodFormName.trim(),
+            category: prodFormCategory,
+            price: Number(prodFormPrice),
+            costPrice: Number(prodFormCostPrice || 0),
+            stock: Number(prodFormStock),
+            lowStockThreshold: Number(prodFormLowStock)
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.product) {
+          setProducts((prev) => prev.map((p) => (p.id === editingProduct.id ? data.product : p)));
+          setIsProductModalOpen(false);
+        }
+      } else {
+        // Create product
+        const res = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: prodFormName.trim(),
+            category: prodFormCategory,
+            price: Number(prodFormPrice),
+            costPrice: Number(prodFormCostPrice || 0),
+            stock: Number(prodFormStock),
+            lowStockThreshold: Number(prodFormLowStock)
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.product) {
+          setProducts((prev) => [...prev, data.product]);
+          setIsProductModalOpen(false);
+        }
+      }
+    } catch (err) {
+      console.error('Error saving product:', err);
+    } finally {
+      setProductSubmitting(false);
+    }
+  };
+
+  const handleQuickRestock = async (product: Product, amount: number) => {
+    try {
+      const newStock = product.stock + amount;
+      const res = await fetch(`/api/products/${product.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stock: newStock })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProducts((prev) =>
+          prev.map((p) => (p.id === product.id ? { ...p, stock: newStock } : p))
+        );
+      }
+    } catch (err) {
+      console.error('Failed to restock:', err);
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    try {
+      const res = await fetch(`/api/products/${productId}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        setProducts((prev) => prev.filter((p) => p.id !== productId));
+      }
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -613,9 +882,25 @@ export default function AdminPage() {
   const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingDate === todayStr).length : 0;
   const pendingPaymentCount = bookings.filter((b) => b.paymentStatus === 'VERIFICATION_PENDING' || b.paymentStatus === 'UNPAID').length;
   const pendingProofsCount = bookings.filter((b) => b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl)).length;
-  const totalRevenue = bookings
+  
+  // Financial Breakdowns (Court vs Store)
+  const courtRevenue = bookings
     .filter((b) => b.bookingStatus !== 'CANCELLED')
     .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+
+  const storeRevenue = posOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const combinedTotalRevenue = courtRevenue + storeRevenue;
+
+  // Today's breakdowns
+  const todayStoreOrders = posOrders.filter((o) => o.createdAt && o.createdAt.startsWith(todayStr));
+  const todayStoreRevenue = todayStoreOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+  const todayCourtBookings = bookings.filter((b) => b.bookingDate === todayStr && b.bookingStatus !== 'CANCELLED');
+  const todayCourtRevenue = todayCourtBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+  const todayCombinedRevenue = todayCourtRevenue + todayStoreRevenue;
+
+  // Inventory stats
+  const lowStockProducts = products.filter((p) => p.isActive === 1 && p.stock <= p.lowStockThreshold);
+  const lowStockCount = lowStockProducts.length;
 
   // Filtered Proofs for Payment Proof Center
   const filteredProofs = bookings.filter((b) => {
@@ -893,7 +1178,7 @@ export default function AdminPage() {
               <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-teal-600 dark:text-teal-400 flex-shrink-0" />
             </div>
             <span className="text-xl sm:text-2xl font-black text-lime-600 dark:text-lime-400 mt-1 sm:mt-2 block">
-              ₱{totalRevenue.toLocaleString()}
+              ₱{combinedTotalRevenue.toLocaleString()}
             </span>
           </div>
         </div>
@@ -927,6 +1212,35 @@ export default function AdminPage() {
                 {pendingProofsCount}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('store')}
+            className={`px-3 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 border-b-2 whitespace-nowrap transition-colors cursor-pointer relative ${
+              activeTab === 'store'
+                ? 'border-lime-500 text-lime-600 dark:text-lime-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>Store & POS</span>
+            {lowStockCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-rose-500 text-white" title={`${lowStockCount} items low on stock`}>
+                {lowStockCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`px-3 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 border-b-2 whitespace-nowrap transition-colors cursor-pointer ${
+              activeTab === 'analytics'
+                ? 'border-lime-500 text-lime-600 dark:text-lime-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>Income & Reports</span>
           </button>
 
           <button
@@ -1404,6 +1718,739 @@ export default function AdminPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* TAB 1.7: COURT STORE & POS */}
+        {activeTab === 'store' && (
+          <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200">
+            {/* Top Store Sub-navigation & Header */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-lime-500/15 text-lime-600 dark:text-lime-400">
+                    <ShoppingBag className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base sm:text-lg font-bold text-slate-950 dark:text-white">
+                      Court Store & POS System
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Front-desk point-of-sale register, inventory controls, and retail orders.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sub-Tabs: POS Register | Inventory | Sales History */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start md:self-auto">
+                <button
+                  onClick={() => setStoreSubTab('pos')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    storeSubTab === 'pos'
+                      ? 'bg-white dark:bg-slate-900 text-lime-600 dark:text-lime-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  <ShoppingCart className="w-3.5 h-3.5" />
+                  <span>POS Register</span>
+                </button>
+
+                <button
+                  onClick={() => setStoreSubTab('inventory')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    storeSubTab === 'inventory'
+                      ? 'bg-white dark:bg-slate-900 text-lime-600 dark:text-lime-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5" />
+                  <span>Inventory ({products.length})</span>
+                  {lowStockCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-rose-500 text-white font-black">
+                      {lowStockCount}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setStoreSubTab('history')}
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    storeSubTab === 'history'
+                      ? 'bg-white dark:bg-slate-900 text-lime-600 dark:text-lime-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  <span>Order History ({posOrders.length})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* SUB-VIEW 1: POS REGISTER */}
+            {storeSubTab === 'pos' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6">
+                {/* Product Catalog & Selector (8 Columns) */}
+                <div className="lg:col-span-7 xl:col-span-8 space-y-4">
+                  {/* Category Filter Chips & Search */}
+                  <div className="flex flex-col sm:flex-row gap-2.5 items-stretch sm:items-center justify-between">
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+                      {['ALL', 'DRINKS', 'BALLS_GEAR', 'RENTALS', 'SNACKS'].map((cat) => (
+                        <button
+                          key={cat}
+                          onClick={() => setPosCategoryFilter(cat)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                            posCategoryFilter === cat
+                              ? 'bg-lime-500 text-slate-950 shadow-sm'
+                              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                          }`}
+                        >
+                          {cat === 'ALL' ? 'All Items' : cat.replace('_', ' & ')}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="relative min-w-[180px]">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search product..."
+                        value={posSearchQuery}
+                        onChange={(e) => setPosSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-lime-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Product Cards Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
+                    {products
+                      .filter((p) => p.isActive === 1)
+                      .filter((p) => posCategoryFilter === 'ALL' || p.category === posCategoryFilter)
+                      .filter((p) => !posSearchQuery || p.name.toLowerCase().includes(posSearchQuery.toLowerCase()))
+                      .map((product) => {
+                        const inCart = cart.find((it) => it.product.id === product.id);
+                        const isOutOfStock = product.stock <= 0;
+
+                        return (
+                          <div
+                            key={product.id}
+                            onClick={() => !isOutOfStock && addToCart(product)}
+                            className={`p-3.5 sm:p-4 rounded-2xl bg-white dark:bg-slate-900 border transition-all cursor-pointer flex flex-col justify-between shadow-sm relative group ${
+                              isOutOfStock
+                                ? 'opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-800'
+                                : inCart
+                                ? 'border-lime-500 ring-2 ring-lime-500/20 hover:shadow-md'
+                                : 'border-slate-200 dark:border-slate-800 hover:border-lime-500/50 hover:shadow-md'
+                            }`}
+                          >
+                            {inCart && (
+                              <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-lime-500 text-slate-950 font-black text-xs flex items-center justify-center shadow-md">
+                                {inCart.quantity}
+                              </span>
+                            )}
+
+                            <div>
+                              <div className="flex items-center justify-between gap-1 mb-2">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 truncate">
+                                  {product.category.replace('_', ' ')}
+                                </span>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                  product.stock <= 0
+                                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                    : product.stock <= product.lowStockThreshold
+                                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                                }`}>
+                                  {product.stock <= 0 ? 'Out' : `${product.stock} left`}
+                                </span>
+                              </div>
+
+                              <h4 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white line-clamp-2">
+                                {product.name}
+                              </h4>
+                            </div>
+
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                              <span className="text-sm sm:text-base font-black text-lime-600 dark:text-lime-400">
+                                ₱{product.price}
+                              </span>
+                              <span className="p-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 group-hover:bg-lime-500 group-hover:text-slate-950 transition-colors">
+                                <Plus className="w-3.5 h-3.5" />
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+
+                {/* POS Register Cart & Checkout Sidebar (4 Columns) */}
+                <div className="lg:col-span-5 xl:col-span-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col justify-between self-start sticky top-20">
+                  <div>
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart className="w-4 h-4 text-lime-600 dark:text-lime-400" />
+                        <h4 className="font-bold text-sm text-slate-950 dark:text-white">Current Order</h4>
+                      </div>
+                      {cart.length > 0 && (
+                        <button
+                          onClick={clearCart}
+                          className="text-[11px] font-semibold text-rose-500 hover:underline cursor-pointer"
+                        >
+                          Clear Cart
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Cart Items List */}
+                    {cart.length === 0 ? (
+                      <div className="py-12 text-center text-slate-400">
+                        <ShoppingBag className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-700 mb-2" />
+                        <p className="text-xs font-semibold">Order cart is empty</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Click products on the left to add items</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5 max-h-[30vh] overflow-y-auto pr-1 scrollbar-thin">
+                        {cart.map(({ product, quantity }) => (
+                          <div
+                            key={product.id}
+                            className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-2"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <h5 className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                {product.name}
+                              </h5>
+                              <span className="text-[11px] font-mono text-lime-600 dark:text-lime-400 font-semibold">
+                                ₱{product.price} each
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                onClick={() => updateCartQuantity(product.id, -1)}
+                                className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-200 cursor-pointer"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="w-6 text-center text-xs font-bold text-slate-900 dark:text-white">
+                                {quantity}
+                              </span>
+                              <button
+                                onClick={() => updateCartQuantity(product.id, 1)}
+                                className="w-6 h-6 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-200 cursor-pointer"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => removeFromCart(product.id)}
+                                className="p-1 text-slate-400 hover:text-rose-500 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Checkout Summary Form */}
+                  {cart.length > 0 && (
+                    <form onSubmit={handlePosCheckout} className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3.5">
+                      {/* Total Amount Due */}
+                      <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Total Due</span>
+                        <span className="text-xl font-black text-lime-600 dark:text-lime-400 font-mono">
+                          ₱{cartTotal.toLocaleString()}
+                        </span>
+                      </div>
+
+                      {/* Payment Method Selector */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                          Payment Method
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPosPaymentMethod('CASH')}
+                            className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              posPaymentMethod === 'CASH'
+                                ? 'bg-emerald-500 text-slate-950 border-emerald-500 shadow-sm'
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            Cash Register
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPosPaymentMethod('GCASH')}
+                            className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                              posPaymentMethod === 'GCASH'
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            GCash QR
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Cash Breakdown (Tendered & Change) */}
+                      {posPaymentMethod === 'CASH' && (
+                        <div className="space-y-2 p-3 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60">
+                          <div>
+                            <label className="block text-[10px] font-bold text-emerald-800 dark:text-emerald-300 uppercase">
+                              Cash Received (₱)
+                            </label>
+                            <input
+                              type="number"
+                              required
+                              min={cartTotal}
+                              placeholder={`Min ₱${cartTotal}`}
+                              value={posCashTendered}
+                              onChange={(e) => setPosCashTendered(e.target.value)}
+                              className="w-full mt-1 px-3 py-2 bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-700 rounded-lg text-xs font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:border-emerald-500"
+                            />
+                          </div>
+
+                          <div className="flex justify-between items-center pt-1 text-xs font-semibold text-emerald-900 dark:text-emerald-200">
+                            <span>Change Due:</span>
+                            <span className="font-mono font-black text-sm text-emerald-600 dark:text-emerald-400">
+                              ₱{changeDue.toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* GCash Reference */}
+                      {posPaymentMethod === 'GCASH' && (
+                        <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/60">
+                          <label className="block text-[10px] font-bold text-blue-800 dark:text-blue-300 uppercase mb-1">
+                            GCash Transaction Ref #
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 90248271049"
+                            value={posGcashRef}
+                            onChange={(e) => setPosGcashRef(e.target.value)}
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-lg text-xs font-mono text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      )}
+
+                      {/* Optional Link to Court Booking */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                          Link to Active Court Booking (Optional)
+                        </label>
+                        <select
+                          value={posSelectedBookingId}
+                          onChange={(e) => setPosSelectedBookingId(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none"
+                        >
+                          <option value="">No Court Tag (Walk-in Customer)</option>
+                          {bookings
+                            .filter((b) => b.bookingDate === todayStr && b.bookingStatus === 'CONFIRMED')
+                            .map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.bookingCode} - {b.clientName} ({b.courtName})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+
+                      {/* Complete Checkout Button */}
+                      <button
+                        type="submit"
+                        disabled={posCheckoutLoading}
+                        className="w-full py-3.5 rounded-2xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs sm:text-sm shadow-xl shadow-lime-500/25 transition-all cursor-pointer flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle className="w-4 h-4 stroke-[3]" />
+                        <span>{posCheckoutLoading ? 'Processing Sale...' : `Charge ₱${cartTotal.toLocaleString()}`}</span>
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* SUB-VIEW 2: INVENTORY & STOCK MANAGEMENT */}
+            {storeSubTab === 'inventory' && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-base font-bold text-slate-900 dark:text-white">Store Inventory Catalog</h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Track stock counts, unit costs, and profit margins.</p>
+                  </div>
+
+                  <button
+                    onClick={openNewProductModal}
+                    className="self-start sm:self-auto flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold text-xs shadow-md shadow-lime-500/20 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    <span>Add New Product</span>
+                  </button>
+                </div>
+
+                {/* Products Table Card */}
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto scrollbar-thin">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold tracking-wider uppercase text-[10px]">
+                          <th className="py-3 px-4">Product Name</th>
+                          <th className="py-3 px-4">Category</th>
+                          <th className="py-3 px-4">Retail Price</th>
+                          <th className="py-3 px-4">Cost Price</th>
+                          <th className="py-3 px-4">Stock Level</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                        {products.map((product) => {
+                          const isLowStock = product.stock <= product.lowStockThreshold && product.stock > 0;
+                          const isOut = product.stock <= 0;
+
+                          return (
+                            <tr key={product.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                              <td className="py-3 px-4 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                                {product.name}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[10px] font-bold">
+                                  {product.category.replace('_', ' ')}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 font-black text-lime-600 dark:text-lime-400 whitespace-nowrap">
+                                ₱{product.price}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                                ₱{product.costPrice || 0}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-mono font-bold text-sm ${
+                                    isOut ? 'text-rose-500' : isLowStock ? 'text-amber-500' : 'text-slate-900 dark:text-white'
+                                  }`}>
+                                    {product.stock}
+                                  </span>
+                                  {/* Quick Restock Buttons */}
+                                  <button
+                                    onClick={() => handleQuickRestock(product, 12)}
+                                    className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                                    title="Quick add +12 units"
+                                  >
+                                    +12
+                                  </button>
+                                  <button
+                                    onClick={() => handleQuickRestock(product, 24)}
+                                    className="px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 text-[10px] font-bold text-slate-700 dark:text-slate-300 cursor-pointer"
+                                    title="Quick add +24 units"
+                                  >
+                                    +24
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                  isOut
+                                    ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30'
+                                    : isLowStock
+                                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse'
+                                    : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                                }`}>
+                                  {isOut ? 'Out of Stock' : isLowStock ? 'Low Stock' : 'In Stock'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => openEditProductModal(product)}
+                                    className="p-1.5 rounded-lg text-lime-600 dark:text-lime-400 hover:bg-lime-500/10 cursor-pointer"
+                                    title="Edit product"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProduct(product.id)}
+                                    className="p-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 cursor-pointer"
+                                    title="Delete product"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SUB-VIEW 3: SALES / ORDERS HISTORY */}
+            {storeSubTab === 'history' && (
+              <div className="space-y-4">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                  <div className="overflow-x-auto scrollbar-thin">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold tracking-wider uppercase text-[10px]">
+                          <th className="py-3 px-4">Order #</th>
+                          <th className="py-3 px-4">Date & Time</th>
+                          <th className="py-3 px-4">Items Purchased</th>
+                          <th className="py-3 px-4">Total Amount</th>
+                          <th className="py-3 px-4">Payment</th>
+                          <th className="py-3 px-4">Ref / Court</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
+                        {posOrders.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-12 text-center text-slate-400">
+                              No store POS orders recorded yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          posOrders.map((order) => (
+                            <tr key={order.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                              <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                                {order.orderNumber}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
+                                {new Date(order.createdAt).toLocaleString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="space-y-0.5">
+                                  {(order.items || []).map((it, idx) => (
+                                    <div key={idx} className="text-[11px]">
+                                      <span className="font-bold text-slate-900 dark:text-white">{it.quantity}x</span> {it.productName}
+                                    </div>
+                                  ))}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 font-black text-lime-600 dark:text-lime-400 whitespace-nowrap">
+                                ₱{order.totalAmount.toLocaleString()}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                  order.paymentMethod === 'GCASH'
+                                    ? 'bg-blue-500/15 text-blue-600 border border-blue-500/30'
+                                    : 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30'
+                                }`}>
+                                  {order.paymentMethod}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
+                                {order.gcashReference || order.bookingId || '—'}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 1.9: FINANCIAL ANALYTICS & MONITORING */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Header */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-lime-500/15 text-lime-600 dark:text-lime-400">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-950 dark:text-white">
+                    Overall Income & Revenue Monitoring
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Unified financial reports combining Court Bookings and Mini Store retail sales.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Income Big KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Grand Total Revenue */}
+              <div className="p-5 rounded-2xl bg-gradient-to-br from-lime-500/10 via-white to-white dark:from-lime-500/10 dark:via-slate-900 dark:to-slate-900 border border-lime-500/30 shadow-sm">
+                <span className="text-xs font-bold text-lime-700 dark:text-lime-400 uppercase tracking-wider block">
+                  Combined Total Revenue
+                </span>
+                <span className="text-3xl font-black text-slate-950 dark:text-white mt-2 block">
+                  ₱{combinedTotalRevenue.toLocaleString()}
+                </span>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  Courts (₱{courtRevenue.toLocaleString()}) + Store (₱{storeRevenue.toLocaleString()})
+                </span>
+              </div>
+
+              {/* Court Bookings Revenue */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  Court Bookings Revenue
+                </span>
+                <span className="text-3xl font-black text-lime-600 dark:text-lime-400 mt-2 block">
+                  ₱{courtRevenue.toLocaleString()}
+                </span>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  {bookings.filter((b) => b.bookingStatus !== 'CANCELLED').length} total reservations
+                </span>
+              </div>
+
+              {/* Mini Store Sales */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  Mini Store Retail Sales
+                </span>
+                <span className="text-3xl font-black text-teal-600 dark:text-teal-400 mt-2 block">
+                  ₱{storeRevenue.toLocaleString()}
+                </span>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  {posOrders.length} front-desk retail orders
+                </span>
+              </div>
+
+              {/* Today's Cash Flow */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">
+                  Today&apos;s Income
+                </span>
+                <span className="text-3xl font-black text-emerald-600 dark:text-emerald-400 mt-2 block">
+                  ₱{todayCombinedRevenue.toLocaleString()}
+                </span>
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  Courts: ₱{todayCourtRevenue.toLocaleString()} | Store: ₱{todayStoreRevenue.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            {/* Visual Revenue Breakdown Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+              {/* Left Box: Revenue Distribution */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm">
+                <h4 className="font-bold text-sm text-slate-950 dark:text-white mb-4">
+                  Revenue Stream Breakdown
+                </h4>
+
+                <div className="space-y-4">
+                  {/* Progress bar */}
+                  <div className="h-5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 flex">
+                    <div
+                      style={{ width: `${combinedTotalRevenue > 0 ? (courtRevenue / combinedTotalRevenue) * 100 : 50}%` }}
+                      className="bg-lime-500 transition-all duration-500"
+                      title="Court Bookings"
+                    />
+                    <div
+                      style={{ width: `${combinedTotalRevenue > 0 ? (storeRevenue / combinedTotalRevenue) * 100 : 50}%` }}
+                      className="bg-teal-500 transition-all duration-500"
+                      title="Mini Store"
+                    />
+                  </div>
+
+                  {/* Legend */}
+                  <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="p-3 rounded-xl bg-lime-500/10 border border-lime-500/20">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-lime-500" />
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">Court Bookings</span>
+                      </div>
+                      <span className="text-lg font-black text-lime-600 dark:text-lime-400 block mt-1">
+                        {combinedTotalRevenue > 0 ? Math.round((courtRevenue / combinedTotalRevenue) * 100) : 0}%
+                      </span>
+                      <span className="text-[11px] text-slate-500">₱{courtRevenue.toLocaleString()}</span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-teal-500/10 border border-teal-500/20">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-teal-500" />
+                        <span className="text-xs font-bold text-slate-900 dark:text-white">Mini Store</span>
+                      </div>
+                      <span className="text-lg font-black text-teal-600 dark:text-teal-400 block mt-1">
+                        {combinedTotalRevenue > 0 ? Math.round((storeRevenue / combinedTotalRevenue) * 100) : 0}%
+                      </span>
+                      <span className="text-[11px] text-slate-500">₱{storeRevenue.toLocaleString()}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Box: Inventory Health & Alerts */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="font-bold text-sm text-slate-950 dark:text-white">
+                      Inventory Alerts & Restock Needs
+                    </h4>
+                    <span className="text-xs font-bold text-rose-500">
+                      {lowStockCount} items need attention
+                    </span>
+                  </div>
+
+                  {lowStockProducts.length === 0 ? (
+                    <div className="p-6 text-center text-slate-400">
+                      <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-1.5" />
+                      <p className="text-xs font-bold text-slate-900 dark:text-white">All products well-stocked!</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">No items are below their minimum threshold.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                      {lowStockProducts.map((p) => (
+                        <div
+                          key={p.id}
+                          className="p-2.5 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 flex items-center justify-between"
+                        >
+                          <div>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white block">{p.name}</span>
+                            <span className="text-[10px] text-rose-600 dark:text-rose-400">
+                              Only {p.stock} units left (Threshold: {p.lowStockThreshold})
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setActiveTab('store');
+                              setStoreSubTab('inventory');
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-rose-500 text-white font-bold text-[10px] hover:bg-rose-600 cursor-pointer"
+                          >
+                            Restock →
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+                  <span>Total Active Catalog Items: {products.length}</span>
+                  <button
+                    onClick={() => {
+                      setActiveTab('store');
+                      setStoreSubTab('pos');
+                    }}
+                    className="font-bold text-lime-600 dark:text-lime-400 hover:underline cursor-pointer"
+                  >
+                    Open Store POS →
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -2062,7 +3109,181 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* Add / Edit Product Modal */}
+      {isProductModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 dark:bg-slate-950/85 backdrop-blur-sm overflow-hidden transition-colors">
+          <div className="relative w-full max-w-md max-h-[92dvh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="flex-shrink-0 flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <Package className="w-4 h-4 text-lime-600 dark:text-lime-400" />
+                <h3 className="text-base sm:text-lg font-bold text-slate-950 dark:text-white">
+                  {editingProduct ? 'Edit Product' : 'Add New Product'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsProductModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveProduct} className="flex-1 overflow-y-auto mt-4 space-y-3.5 pr-1 scrollbar-thin">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Product Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Pocari Sweat 500ml"
+                  value={prodFormName}
+                  onChange={(e) => setProdFormName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Category</label>
+                <select
+                  value={prodFormCategory}
+                  onChange={(e) => setProdFormCategory(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500"
+                >
+                  <option value="DRINKS">Drinks & Hydration</option>
+                  <option value="BALLS_GEAR">Balls & Gear</option>
+                  <option value="RENTALS">Equipment Rentals</option>
+                  <option value="SNACKS">Snacks & Bars</option>
+                  <option value="OTHER">Other Merchandise</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Selling Price (₱)</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    placeholder="e.g. 65"
+                    value={prodFormPrice}
+                    onChange={(e) => setProdFormPrice(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Cost Price (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="e.g. 45"
+                    value={prodFormCostPrice}
+                    onChange={(e) => setProdFormCostPrice(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Stock Count</label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={prodFormStock}
+                    onChange={(e) => setProdFormStock(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Low Stock Alert</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    value={prodFormLowStock}
+                    onChange={(e) => setProdFormLowStock(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-3 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsProductModalOpen(false)}
+                  className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={productSubmitting}
+                  className="flex-1 py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs shadow-lg shadow-lime-500/20 transition-all cursor-pointer"
+                >
+                  {productSubmitting ? 'Saving...' : 'Save Product'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* POS Receipt / Sale Completed Modal */}
+      {lastCheckoutOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl text-center animate-in zoom-in-95">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/20 text-emerald-500 flex items-center justify-center mx-auto mb-3">
+              <CheckCircle className="w-6 h-6 stroke-[3]" />
+            </div>
+
+            <h3 className="text-lg font-black text-slate-950 dark:text-white">Sale Completed!</h3>
+            <p className="text-xs font-mono text-slate-500 mt-0.5">{lastCheckoutOrder.orderNumber}</p>
+
+            <div className="my-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 text-left space-y-2 border border-slate-200 dark:border-slate-700">
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500">Total Charged:</span>
+                <span className="font-mono font-black text-lime-600 dark:text-lime-400">
+                  ₱{lastCheckoutOrder.totalAmount.toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-slate-500">Payment:</span>
+                <span className="font-bold uppercase text-slate-900 dark:text-white">
+                  {lastCheckoutOrder.paymentMethod}
+                </span>
+              </div>
+              {lastCheckoutOrder.cashTendered !== null && lastCheckoutOrder.cashTendered !== undefined && (
+                <>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500">Cash Received:</span>
+                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                      ₱{lastCheckoutOrder.cashTendered}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-slate-500">Change Given:</span>
+                    <span className="font-mono font-black text-emerald-600">
+                      ₱{lastCheckoutOrder.changeGiven || 0}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <button
+              onClick={() => setLastCheckoutOrder(null)}
+              className="w-full py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs cursor-pointer shadow-md shadow-lime-500/20"
+            >
+              Done & Next Order
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
