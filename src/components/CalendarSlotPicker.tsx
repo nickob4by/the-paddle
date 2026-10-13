@@ -1,27 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Court, Booking } from '@/lib/types';
-import {
-  Clock,
-  Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  Sparkles,
-  CheckCircle2,
-  AlertCircle,
-  Sun,
-  Sunset,
-  Moon,
-  LayoutGrid,
-  List
-} from 'lucide-react';
+import { Clock, Calendar as CalendarIcon, CheckCircle2, AlertCircle, RefreshCw, ChevronRight } from 'lucide-react';
 
 interface CalendarSlotPickerProps {
-  courts: Court[];
-  selectedCourt?: Court | null;
-  onCourtChange?: (court: Court) => void;
+  selectedCourt: Court;
   onProceedToBooking: (bookingDetails: {
     court: Court;
     date: string;
@@ -32,58 +16,77 @@ interface CalendarSlotPickerProps {
   }) => void;
 }
 
-type TimeWindowFilter = 'ALL' | 'MORNING' | 'AFTERNOON' | 'EVENING';
-type ViewMode = 'AGENDA' | 'GRID';
+interface DateOption {
+  dateStr: string;
+  dayName: string;
+  dayNum: number;
+  monthName: string;
+  isToday: boolean;
+}
 
 export default function CalendarSlotPicker({
-  courts,
   selectedCourt,
-  onCourtChange,
   onProceedToBooking
 }: CalendarSlotPickerProps) {
-  // Current chosen date in YYYY-MM-DD
   const [selectedDate, setSelectedDate] = useState<string>('');
+  const [dateOptions, setDateOptions] = useState<DateOption[]>([]);
   const [existingBookings, setExistingBookings] = useState<Booking[]>([]);
   const [loadingBookings, setLoadingBookings] = useState(false);
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
 
-  // Filters
-  const [playDuration, setPlayDuration] = useState<number>(1); // 1h, 2h, 3h
-  const [timeWindow, setTimeWindow] = useState<TimeWindowFilter>('ALL');
-  const [viewMode, setViewMode] = useState<ViewMode>('AGENDA');
-
-  // Initialize today's date safely in client
+  // Initialize dates safely in useEffect to satisfy Next.js 16 prerender checks
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
     setSelectedDate(today);
+
+    const options = Array.from({ length: 14 }).map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dayNum = d.getDate();
+      const monthName = d.toLocaleDateString('en-US', { month: 'short' });
+      return { dateStr, dayName, dayNum, monthName, isToday: i === 0 };
+    });
+    setDateOptions(options);
     setLastRefreshed(new Date().toLocaleTimeString());
   }, []);
 
-  // Fetch all bookings for the active date across all courts
+  // Operating hours: 06:00 to 22:00 (1-hour slots)
+  const timeSlots = [
+    '06:00', '07:00', '08:00', '09:00', '10:00', '11:00',
+    '12:00', '13:00', '14:00', '15:00', '16:00', '17:00',
+    '18:00', '19:00', '20:00', '21:00'
+  ];
+
+  // Fetch bookings for the selected court and date
   const fetchBookings = useCallback(async () => {
-    if (!selectedDate) return;
+    if (!selectedCourt?.id || !selectedDate) return;
     try {
       setLoadingBookings(true);
-      const res = await fetch(`/api/bookings?date=${selectedDate}`);
+      const res = await fetch(`/api/bookings?courtId=${selectedCourt.id}&date=${selectedDate}`);
       const data = await res.json();
       if (data.success) {
         setExistingBookings(data.bookings || []);
       }
-      setLastRefreshed(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      setLastRefreshed(new Date().toLocaleTimeString());
     } catch (err) {
       console.error('Failed to fetch bookings:', err);
     } finally {
       setLoadingBookings(false);
     }
-  }, [selectedDate]);
+  }, [selectedCourt?.id, selectedDate]);
 
+  // Initial and reactive fetch
   useEffect(() => {
     if (selectedDate) {
       fetchBookings();
+      setSelectedSlots([]); // reset selected slots on court or date switch
     }
   }, [fetchBookings, selectedDate]);
 
-  // Live synchronizer every 6s to prevent double bookings
+  // Auto-refresh every 6 seconds for live real-time synchronization
   useEffect(() => {
     if (!selectedDate) return;
     const interval = setInterval(() => {
@@ -92,87 +95,41 @@ export default function CalendarSlotPicker({
     return () => clearInterval(interval);
   }, [fetchBookings, selectedDate]);
 
-  // Date Navigation handlers
-  const handlePrevDay = () => {
-    if (!selectedDate) return;
-    const current = new Date(selectedDate);
-    current.setDate(current.getDate() - 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
-  };
+  // Check if a specific hour slot is already booked
+  const isSlotBooked = (slotHourStr: string) => {
+    const slotHour = parseInt(slotHourStr.split(':')[0], 10);
+    const nextHour = slotHour + 1;
+    const nextHourStr = `${nextHour.toString().padStart(2, '0')}:00`;
 
-  const handleNextDay = () => {
-    if (!selectedDate) return;
-    const current = new Date(selectedDate);
-    current.setDate(current.getDate() + 1);
-    setSelectedDate(current.toISOString().split('T')[0]);
-  };
-
-  const handleSetToday = () => {
-    const today = new Date().toISOString().split('T')[0];
-    setSelectedDate(today);
-  };
-
-  // Human-readable formatted date string (e.g. "Tuesday, Oct 14, 2026")
-  const formattedDate = useMemo(() => {
-    if (!selectedDate) return '';
-    const [y, m, d] = selectedDate.split('-').map(Number);
-    const dateObj = new Date(y, m - 1, d);
-    return dateObj.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
+    return existingBookings.some((b) => {
+      if (b.bookingStatus === 'CANCELLED') return false;
+      return b.startTime < nextHourStr && b.endTime > slotHourStr;
     });
-  }, [selectedDate]);
+  };
 
-  const isToday = useMemo(() => {
-    if (!selectedDate) return false;
-    const today = new Date().toISOString().split('T')[0];
-    return selectedDate === today;
-  }, [selectedDate]);
+  // Toggle slot selection
+  const handleSlotToggle = (slot: string) => {
+    if (isSlotBooked(slot)) return;
 
-  // Operating hours: 06:00 to 22:00 (slots start from 06:00 up to 21:00)
-  const allTimeSlots = useMemo(() => {
-    const slots = [];
-    for (let h = 6; h <= 21; h++) {
-      slots.push(`${h.toString().padStart(2, '0')}:00`);
+    if (selectedSlots.includes(slot)) {
+      setSelectedSlots(selectedSlots.filter((s) => s !== slot));
+    } else {
+      const newSlots = [...selectedSlots, slot].sort();
+      setSelectedSlots(newSlots);
     }
-    return slots;
-  }, []);
+  };
 
-  // Filter slots based on Morning (6-12), Afternoon (12-17), Evening (17-22)
-  const filteredTimeSlots = useMemo(() => {
-    return allTimeSlots.filter((slot) => {
-      const h = parseInt(slot.split(':')[0], 10);
-      // Ensure the slot + duration doesn't exceed 22:00 closing time
-      if (h + playDuration > 22) return false;
+  // Calculate start time, end time, and duration
+  const sortedSlots = [...selectedSlots].sort();
+  const startTime = sortedSlots[0] || '';
+  const lastSlot = sortedSlots[sortedSlots.length - 1] || '';
+  const endHour = lastSlot ? parseInt(lastSlot.split(':')[0], 10) + 1 : 0;
+  const endTime = lastSlot ? `${endHour.toString().padStart(2, '0')}:00` : '';
+  const durationHours = sortedSlots.length;
+  const totalAmount = durationHours * selectedCourt.hourlyRate;
 
-      if (timeWindow === 'MORNING') return h >= 6 && h < 12;
-      if (timeWindow === 'AFTERNOON') return h >= 12 && h < 17;
-      if (timeWindow === 'EVENING') return h >= 17 && h < 22;
-      return true;
-    });
-  }, [allTimeSlots, timeWindow, playDuration]);
-
-  // Check if a court is occupied for a specific slot and duration
-  const isCourtSlotOccupied = useCallback(
-    (courtId: string, startHourStr: string, duration: number) => {
-      const startH = parseInt(startHourStr.split(':')[0], 10);
-      const endH = startH + duration;
-      const endHourStr = `${endH.toString().padStart(2, '0')}:00`;
-
-      return existingBookings.some((b) => {
-        if (b.courtId !== courtId) return false;
-        if (b.bookingStatus === 'CANCELLED') return false;
-        // Overlap condition: start < otherEnd && otherStart < end
-        return b.startTime < endHourStr && b.endTime > startHourStr;
-      });
-    },
-    [existingBookings]
-  );
-
-  // Time formatter helper
-  const formatTimeStr = (time: string) => {
+  // Format 24h to 12h AM/PM
+  const formatTime = (time: string) => {
     if (!time) return '';
     const [h] = time.split(':');
     const hour = parseInt(h, 10);
@@ -181,413 +138,190 @@ export default function CalendarSlotPicker({
     return `${displayHour}:00 ${ampm}`;
   };
 
-  const formatSlotRange = (startStr: string, duration: number) => {
-    const startH = parseInt(startStr.split(':')[0], 10);
-    const endH = startH + duration;
-    const endStr = `${endH.toString().padStart(2, '0')}:00`;
-    return `${formatTimeStr(startStr)} - ${formatTimeStr(endStr)}`;
-  };
-
-  // Direct 1-Click Booking
-  const handleSelectSlot = (court: Court, startSlot: string) => {
-    const startH = parseInt(startSlot.split(':')[0], 10);
-    const endH = startH + playDuration;
-    const endSlot = `${endH.toString().padStart(2, '0')}:00`;
-    const totalAmount = court.hourlyRate * playDuration;
-
-    onProceedToBooking({
-      court,
-      date: selectedDate,
-      startTime: startSlot,
-      endTime: endSlot,
-      durationHours: playDuration,
-      totalAmount
-    });
-  };
-
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 md:p-8 shadow-2xl relative overflow-hidden">
-      {/* Glow highlight */}
-      <div className="absolute top-0 right-1/4 w-96 h-96 bg-lime-500/5 rounded-full blur-3xl pointer-events-none" />
-
-      {/* TOP BAR: Title & Real-Time Sync */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
         <div>
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-lime-400 animate-pulse" />
-            <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Live Court Schedule & Booking
-            </h2>
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <h2 className="text-xl md:text-2xl font-black text-white">Select Date & Time</h2>
           </div>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Pick your date & hour. All courts shown side-by-side with real-time availability.
+          <p className="text-sm text-slate-400 mt-1">
+            Reserving for <span className="font-semibold text-lime-400">{selectedCourt.name}</span> (₱{selectedCourt.hourlyRate}/hr)
           </p>
         </div>
 
-        {/* View Switcher & Sync */}
-        <div className="flex items-center gap-2.5 self-start sm:self-auto">
-          {/* View toggle */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setViewMode('AGENDA')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === 'AGENDA'
-                  ? 'bg-lime-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="PickleCourts Agenda View"
-            >
-              <List className="w-3.5 h-3.5" />
-              <span>Agenda</span>
-            </button>
-            <button
-              onClick={() => setViewMode('GRID')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                viewMode === 'GRID'
-                  ? 'bg-lime-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-              title="Google Calendar Grid View"
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-              <span>Grid</span>
-            </button>
-          </div>
-
-          {/* Refresh button */}
+        {/* Live status badge */}
+        <div className="flex items-center gap-3">
+          {lastRefreshed && (
+            <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/80 px-3 py-1.5 rounded-full border border-slate-700/60">
+              <RefreshCw className={`w-3.5 h-3.5 text-lime-400 ${loadingBookings ? 'animate-spin' : ''}`} />
+              <span>Live Sync: {lastRefreshed}</span>
+            </div>
+          )}
           <button
             onClick={() => fetchBookings()}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/60 text-xs font-semibold transition-colors cursor-pointer"
-            title="Refresh availability"
+            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+            title="Refresh Slots"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-lime-400 ${loadingBookings ? 'animate-spin' : ''}`} />
-            <span className="hidden md:inline">Sync</span>
+            <RefreshCw className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* DATE NAVIGATOR & PICKER */}
-      <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-950/70 p-4 rounded-2xl border border-slate-800/80">
-        <div className="flex items-center gap-2">
-          {/* Prev Day */}
-          <button
-            onClick={handlePrevDay}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
-            title="Previous Day"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-
-          {/* Today Button */}
-          <button
-            onClick={handleSetToday}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-colors cursor-pointer border ${
-              isToday
-                ? 'bg-lime-500/15 text-lime-400 border-lime-500/30'
-                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800 hover:border-slate-700'
-            }`}
-          >
-            Today
-          </button>
-
-          {/* Next Day */}
-          <button
-            onClick={handleNextDay}
-            className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
-            title="Next Day"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-
-          {/* Formatted Date Display */}
-          <div className="ml-2">
-            <span className="text-base sm:text-lg font-black text-white block leading-tight">
-              {formattedDate}
-            </span>
-            <span className="text-[11px] text-slate-400">
-              {isToday ? 'Today\'s Schedule' : 'Selected Schedule'}
-            </span>
-          </div>
-        </div>
-
-        {/* Quick Date Input picker */}
-        <div className="flex items-center gap-2">
-          <label className="relative flex items-center bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl px-3 py-2 text-xs font-semibold text-slate-300 cursor-pointer transition-colors">
-            <CalendarIcon className="w-4 h-4 text-lime-400 mr-2" />
-            <span>Choose Date</span>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => {
-                if (e.target.value) setSelectedDate(e.target.value);
-              }}
-              className="absolute inset-0 opacity-0 cursor-pointer w-full"
-            />
-          </label>
-        </div>
-      </div>
-
-      {/* FILTER DOCK: DURATION & TIME OF DAY */}
-      <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 pb-2">
-        {/* Play Duration */}
-        <div className="flex items-center gap-2 bg-slate-950/40 p-2.5 rounded-2xl border border-slate-800/60">
-          <span className="text-xs font-bold text-slate-400 uppercase tracking-wider px-2">
-            Duration:
-          </span>
-          <div className="flex items-center gap-1.5 flex-1">
-            {[1, 2, 3].map((dur) => (
+      {/* Date Carousel */}
+      <div className="mt-6">
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+          <CalendarIcon className="w-4 h-4 text-lime-400" />
+          Choose Date
+        </label>
+        <div className="flex gap-2.5 overflow-x-auto pb-3 pt-1 scrollbar-thin scrollbar-thumb-slate-700">
+          {dateOptions.map((opt) => {
+            const isSelected = selectedDate === opt.dateStr;
+            return (
               <button
-                key={dur}
-                onClick={() => setPlayDuration(dur)}
-                className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-black transition-all cursor-pointer ${
-                  playDuration === dur
-                    ? 'bg-lime-500 text-slate-950 shadow-md shadow-lime-500/20'
-                    : 'bg-slate-900 text-slate-300 hover:bg-slate-800 hover:text-white border border-slate-800'
+                key={opt.dateStr}
+                onClick={() => setSelectedDate(opt.dateStr)}
+                className={`flex-shrink-0 flex flex-col items-center justify-center w-20 py-3 px-2 rounded-2xl border transition-all cursor-pointer ${
+                  isSelected
+                    ? 'bg-lime-500 text-slate-950 border-lime-400 font-bold shadow-lg shadow-lime-500/20 scale-105'
+                    : 'bg-slate-800/60 hover:bg-slate-800 text-slate-300 border-slate-700/60 hover:border-slate-600'
                 }`}
               >
-                {dur}h play
+                <span className={`text-[11px] font-semibold uppercase ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>
+                  {opt.isToday ? 'Today' : opt.dayName}
+                </span>
+                <span className="text-xl font-black my-0.5">{opt.dayNum}</span>
+                <span className={`text-[10px] ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}>
+                  {opt.monthName}
+                </span>
               </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Time of Day Tabs */}
-        <div className="flex items-center gap-1.5 bg-slate-950/40 p-2.5 rounded-2xl border border-slate-800/60 overflow-x-auto">
-          <button
-            onClick={() => setTimeWindow('ALL')}
-            className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              timeWindow === 'ALL'
-                ? 'bg-lime-500 text-slate-950 shadow-sm'
-                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
-            }`}
-          >
-            All Hours
-          </button>
-          <button
-            onClick={() => setTimeWindow('MORNING')}
-            className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              timeWindow === 'MORNING'
-                ? 'bg-lime-500 text-slate-950 shadow-sm'
-                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
-            }`}
-          >
-            <Sun className="w-3.5 h-3.5 text-amber-400" />
-            <span>Morning</span>
-          </button>
-          <button
-            onClick={() => setTimeWindow('AFTERNOON')}
-            className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              timeWindow === 'AFTERNOON'
-                ? 'bg-lime-500 text-slate-950 shadow-sm'
-                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
-            }`}
-          >
-            <Sunset className="w-3.5 h-3.5 text-orange-400" />
-            <span>Afternoon</span>
-          </button>
-          <button
-            onClick={() => setTimeWindow('EVENING')}
-            className={`flex items-center gap-1.5 py-1.5 px-3 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              timeWindow === 'EVENING'
-                ? 'bg-lime-500 text-slate-950 shadow-sm'
-                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
-            }`}
-          >
-            <Moon className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Evening</span>
-          </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* SCHEDULE CONTENT */}
-      {viewMode === 'AGENDA' ? (
-        /* ============================================================ */
-        /* VIEW 1: AGENDA LIST (Inspired by PickleCourts)              */
-        /* ============================================================ */
-        <div className="mt-6 space-y-3.5">
-          {filteredTimeSlots.length === 0 ? (
-            <div className="p-8 text-center bg-slate-950/40 rounded-2xl border border-slate-800 text-slate-400 text-sm">
-              No slots available for the selected filters.
-            </div>
-          ) : (
-            filteredTimeSlots.map((slot) => {
-              // Calculate court availability for this hour
-              const courtAvailability = courts.map((court) => {
-                const occupied = isCourtSlotOccupied(court.id, slot, playDuration);
-                return { court, occupied };
-              });
-              const freeCourtsCount = courtAvailability.filter((c) => !c.occupied).length;
-              const isAllFull = freeCourtsCount === 0;
-
-              return (
-                <div
-                  key={slot}
-                  className="bg-slate-950/60 border border-slate-800/90 rounded-2xl p-4 sm:p-5 transition-all hover:border-slate-700/80"
-                >
-                  {/* Slot Header Row */}
-                  <div className="flex items-center justify-between pb-3.5 mb-3.5 border-b border-slate-850">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-lime-500/10 flex items-center justify-center text-lime-400">
-                        <Clock className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <span className="text-base sm:text-lg font-black text-white">
-                          {formatSlotRange(slot, playDuration)}
-                        </span>
-                        <span className="block text-[11px] text-slate-400">
-                          {playDuration} hour{playDuration > 1 ? 's' : ''} window
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Summary badge */}
-                    <div>
-                      {isAllFull ? (
-                        <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-rose-950/60 text-rose-400 border border-rose-900/60">
-                          Fully Booked
-                        </span>
-                      ) : (
-                        <span className="text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full bg-lime-500/15 text-lime-400 border border-lime-500/30">
-                          {freeCourtsCount} {freeCourtsCount === 1 ? 'Court' : 'Courts'} Free
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Individual Courts Grid for this hour */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {courtAvailability.map(({ court, occupied }) => {
-                      const totalAmount = court.hourlyRate * playDuration;
-                      return (
-                        <div
-                          key={court.id}
-                          className={`p-3.5 rounded-xl border flex items-center justify-between gap-3 transition-all ${
-                            occupied
-                              ? 'bg-slate-900/40 border-slate-800/60 text-slate-500 opacity-60'
-                              : 'bg-slate-900/90 hover:bg-slate-850 border-slate-800 hover:border-lime-500/50'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold text-white">
-                                {court.name}
-                              </span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-medium">
-                                {court.surfaceType}
-                              </span>
-                            </div>
-                            <div className="text-xs text-lime-400 font-semibold mt-1">
-                              ₱{totalAmount.toLocaleString()} <span className="text-[11px] text-slate-400">({playDuration}h)</span>
-                            </div>
-                          </div>
-
-                          {occupied ? (
-                            <span className="text-[11px] font-bold uppercase px-2.5 py-1 rounded-lg bg-rose-950/40 text-rose-400/80 border border-rose-900/40">
-                              Booked
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => handleSelectSlot(court, slot)}
-                              className="px-3.5 py-2 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs shadow-md shadow-lime-500/20 transition-all cursor-pointer hover:scale-105 active:scale-95 whitespace-nowrap"
-                            >
-                              Book Now
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })
-          )}
+      {/* Legend */}
+      <div className="mt-6 flex flex-wrap items-center gap-4 text-xs text-slate-400 bg-slate-950/40 p-3 rounded-xl border border-slate-800/60">
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-md bg-slate-800 border border-slate-700" />
+          <span>Available</span>
         </div>
-      ) : (
-        /* ============================================================ */
-        /* VIEW 2: GOOGLE CALENDAR TIMELINE GRID                        */
-        /* ============================================================ */
-        <div className="mt-6 overflow-x-auto pb-4">
-          <div className="min-w-[680px] bg-slate-950/70 border border-slate-800 rounded-2xl overflow-hidden">
-            {/* Table Header: Courts */}
-            <div className="grid grid-cols-[100px_repeat(auto-fit,minmax(180px,1fr))] border-b border-slate-800 bg-slate-900/80">
-              <div className="p-3.5 text-xs font-bold text-slate-400 uppercase tracking-wider border-r border-slate-800 flex items-center justify-center">
-                Time
-              </div>
-              {courts.map((court) => (
-                <div key={court.id} className="p-3.5 border-r border-slate-800 last:border-r-0 text-center">
-                  <div className="text-sm font-bold text-white">{court.name}</div>
-                  <div className="text-[11px] text-lime-400 font-semibold">
-                    ₱{court.hourlyRate * playDuration} / {playDuration}h
-                  </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-md bg-lime-500 border border-lime-400" />
+          <span className="text-lime-300 font-semibold">Your Selection</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-md bg-rose-950/60 border border-rose-900/60 flex items-center justify-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+          </div>
+          <span className="text-rose-400">Reserved / Unavailable</span>
+        </div>
+      </div>
+
+      {/* Time Slots Grid */}
+      <div className="mt-6">
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-2">
+          <Clock className="w-4 h-4 text-lime-400" />
+          Available 1-Hour Time Slots
+        </label>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 gap-3">
+          {timeSlots.map((slot) => {
+            const booked = isSlotBooked(slot);
+            const isSelected = selectedSlots.includes(slot);
+            const nextH = parseInt(slot.split(':')[0], 10) + 1;
+            const slotEndStr = `${nextH.toString().padStart(2, '0')}:00`;
+
+            return (
+              <button
+                key={slot}
+                disabled={booked}
+                onClick={() => handleSlotToggle(slot)}
+                className={`relative group p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between min-h-[74px] ${
+                  booked
+                    ? 'bg-rose-950/20 border-rose-900/30 text-rose-300/40 cursor-not-allowed opacity-65'
+                    : isSelected
+                    ? 'bg-lime-500 border-lime-400 text-slate-950 font-bold shadow-md shadow-lime-500/25 scale-[1.02]'
+                    : 'bg-slate-800/80 hover:bg-slate-800 border-slate-700 hover:border-lime-500/50 text-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className={`text-sm font-bold ${isSelected ? 'text-slate-950' : booked ? 'text-rose-400/50 line-through' : 'text-white'}`}>
+                    {formatTime(slot)}
+                  </span>
+                  {isSelected && <CheckCircle2 className="w-4 h-4 text-slate-950 stroke-[2.5]" />}
+                  {booked && (
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-900/40 text-rose-400 border border-rose-800/50">
+                      Booked
+                    </span>
+                  )}
                 </div>
-              ))}
+
+                <div className="flex items-center justify-between w-full mt-1">
+                  <span className={`text-[11px] ${isSelected ? 'text-slate-900 font-semibold' : 'text-slate-400'}`}>
+                    until {formatTime(slotEndStr)}
+                  </span>
+                  {!booked && !isSelected && (
+                    <span className="text-[11px] text-lime-400/90 font-medium">Available</span>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Bottom Summary Bar */}
+      {selectedSlots.length > 0 && selectedDate && (
+        <div className="mt-8 p-5 bg-gradient-to-r from-slate-800 to-slate-850 rounded-2xl border border-lime-500/40 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-in fade-in slide-in-from-bottom-2">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-xs uppercase font-extrabold tracking-wider px-2 py-0.5 rounded bg-lime-500 text-slate-950">
+                {durationHours} Hour{durationHours > 1 ? 's' : ''} Selected
+              </span>
+              <span className="text-sm font-semibold text-white">
+                {formatTime(startTime)} – {formatTime(endTime)}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400">
+              {selectedDate} • {selectedCourt.name}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="text-right">
+              <span className="text-xs text-slate-400 block font-medium">Total Price</span>
+              <span className="text-2xl font-black text-lime-400">₱{totalAmount.toLocaleString()}</span>
             </div>
 
-            {/* Time Slot Rows */}
-            <div className="divide-y divide-slate-850">
-              {filteredTimeSlots.map((slot) => (
-                <div
-                  key={slot}
-                  className="grid grid-cols-[100px_repeat(auto-fit,minmax(180px,1fr))] hover:bg-slate-900/30 transition-colors"
-                >
-                  {/* Time Axis */}
-                  <div className="p-3 text-xs font-bold text-slate-300 border-r border-slate-800 flex items-center justify-center bg-slate-900/40">
-                    {formatTimeStr(slot)}
-                  </div>
-
-                  {/* Court Columns */}
-                  {courts.map((court) => {
-                    const occupied = isCourtSlotOccupied(court.id, slot, playDuration);
-                    return (
-                      <div
-                        key={court.id}
-                        className="p-2 border-r border-slate-800/80 last:border-r-0 flex items-center justify-center"
-                      >
-                        {occupied ? (
-                          <div className="w-full py-2 px-3 rounded-xl bg-rose-950/30 border border-rose-900/40 text-center">
-                            <span className="text-[11px] font-bold text-rose-400/80 uppercase">
-                              Reserved
-                            </span>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => handleSelectSlot(court, slot)}
-                            className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-lime-500 text-slate-300 hover:text-slate-950 border border-slate-800 hover:border-lime-400 font-bold text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer group shadow-sm hover:scale-[1.02]"
-                          >
-                            <span className="group-hover:hidden text-lime-400 font-semibold">Available</span>
-                            <span className="hidden group-hover:inline font-black">Book {court.name}</span>
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+            <button
+              onClick={() => {
+                onProceedToBooking({
+                  court: selectedCourt,
+                  date: selectedDate,
+                  startTime,
+                  endTime,
+                  durationHours,
+                  totalAmount
+                });
+              }}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-sm shadow-lg shadow-lime-500/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
+            >
+              <span>Continue Booking</span>
+              <ChevronRight className="w-4 h-4 stroke-[3]" />
+            </button>
           </div>
         </div>
       )}
 
-      {/* Legend & Instructions */}
-      <div className="mt-6 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400 pt-4 border-t border-slate-800/80">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-md bg-lime-500" />
-            <span className="text-slate-300 font-medium">Available to Book</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-md bg-rose-950/70 border border-rose-900" />
-            <span className="text-slate-400">Reserved / Unavailable</span>
-          </div>
+      {selectedSlots.length === 0 && (
+        <div className="mt-6 p-4 rounded-xl bg-slate-950/40 border border-slate-800/80 flex items-center gap-3 text-slate-400 text-sm">
+          <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+          <span>Click on one or more available time slots above to select your play time.</span>
         </div>
-
-        {lastRefreshed && (
-          <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            <span>Synced at {lastRefreshed}</span>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }
