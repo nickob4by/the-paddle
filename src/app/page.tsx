@@ -50,6 +50,7 @@ export default function HomePage() {
         setCourtCloseTime(close);
         const formatBadgeTime = (t: string) => {
           const h = parseInt(t.split(':')[0], 10);
+          if (h === 24 || h === 0) return '12:00 AM';
           const ampm = h >= 12 ? 'PM' : 'AM';
           const dh = h % 12 === 0 ? 12 : h % 12;
           return `${dh}:00 ${ampm}`;

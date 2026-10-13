@@ -509,6 +509,7 @@ export default function AdminPage() {
     if (!time) return '';
     const [h] = time.split(':');
     const hour = parseInt(h, 10);
+    if (hour === 24 || hour === 0) return '12:00 AM';
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour % 12 === 0 ? 12 : hour % 12;
     return `${displayHour}:00 ${ampm}`;
@@ -1239,7 +1240,9 @@ export default function AdminPage() {
                       onChange={(e) => setSettingsCloseTime(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500"
                     >
-                      {Array.from({ length: 24 }).map((_, i) => {
+                      {/* Hours 01:00 to 23:00 */}
+                      {Array.from({ length: 23 }).map((_, idx) => {
+                        const i = idx + 1;
                         const val = `${i.toString().padStart(2, '0')}:00`;
                         const hour = i % 12 === 0 ? 12 : i % 12;
                         const ampm = i >= 12 ? 'PM' : 'AM';
@@ -1249,6 +1252,9 @@ export default function AdminPage() {
                           </option>
                         );
                       })}
+                      {/* Explicit Midnight options */}
+                      <option value="24:00">24:00 (12:00 AM Midnight)</option>
+                      <option value="00:00">00:00 (12:00 AM Midnight)</option>
                     </select>
                   </div>
                 </div>

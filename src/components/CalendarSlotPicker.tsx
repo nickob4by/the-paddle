@@ -96,10 +96,19 @@ export default function CalendarSlotPicker({
 
   // Compute operating hours slots dynamically from openTime to closeTime
   const timeSlots = useMemo(() => {
-    const startH = parseInt(openTime.split(':')[0], 10) || 6;
-    const endH = parseInt(closeTime.split(':')[0], 10) || 22;
+    const startH = parseInt(openTime.split(':')[0], 10);
+    let endH = parseInt(closeTime.split(':')[0], 10);
+
+    // If closeTime is 00:00 or 24:00, it represents midnight (end of day 24:00)
+    if (closeTime === '00:00' || closeTime === '24:00' || endH === 0) {
+      endH = 24;
+    }
+
+    const validStart = Number.isNaN(startH) ? 6 : startH;
+    const validEnd = Number.isNaN(endH) ? 22 : endH;
+
     const slots: string[] = [];
-    for (let h = startH; h < endH; h++) {
+    for (let h = validStart; h < validEnd; h++) {
       slots.push(`${h.toString().padStart(2, '0')}:00`);
     }
     return slots.length > 0 ? slots : ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
@@ -226,6 +235,7 @@ export default function CalendarSlotPicker({
     if (!time) return '';
     const [h] = time.split(':');
     const hour = parseInt(h, 10);
+    if (hour === 24 || hour === 0) return '12:00 AM';
     const ampm = hour >= 12 ? 'PM' : 'AM';
     const displayHour = hour % 12 === 0 ? 12 : hour % 12;
     return `${displayHour}:00 ${ampm}`;
