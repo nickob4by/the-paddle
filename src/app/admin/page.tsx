@@ -409,6 +409,7 @@ export default function AdminPage() {
         notes: proofNotes.trim() || booking.notes
       });
       setVerifyingBooking(null);
+      await fetchData(true);
     } catch (err) {
       console.error(err);
     } finally {
@@ -429,6 +430,7 @@ export default function AdminPage() {
         notes: proofNotes.trim() ? `[REJECTED]: ${proofNotes.trim()}` : '[REJECTED]: Payment proof invalid'
       });
       setVerifyingBooking(null);
+      await fetchData(true);
     } catch (err) {
       console.error(err);
     } finally {
@@ -898,9 +900,9 @@ export default function AdminPage() {
   });
 
   // Calculate statistics
-  const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingDate === todayStr).length : 0;
-  const pendingPaymentCount = bookings.filter((b) => b.paymentStatus === 'VERIFICATION_PENDING' || b.paymentStatus === 'UNPAID').length;
-  const pendingProofsCount = bookings.filter((b) => b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl)).length;
+  const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && b.bookingDate === todayStr).length : 0;
+  const pendingPaymentCount = bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && (b.paymentStatus === 'VERIFICATION_PENDING' || b.paymentStatus === 'UNPAID')).length;
+  const pendingProofsCount = bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && (b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl))).length;
   
   // --- DYNAMIC FINANCIAL ANALYTICS (Day / Week / Month / All) ---
   const getFilterStartDate = () => {
@@ -922,9 +924,12 @@ export default function AdminPage() {
 
   const filterStartDateStr = getFilterStartDate();
 
-  // Filtered Bookings for the selected timeframe
+  // Filtered Bookings for the selected timeframe - ONLY verified & paid bookings reflect in income
   const analyticsBookings = bookings.filter((b) => {
     if (b.bookingStatus === 'CANCELLED') return false;
+    
+    // Requirement: Income only reflects after payment is verified/paid
+    if (b.paymentStatus !== 'PAID') return false;
     
     // Check both reservation slot date and transaction created date in local time
     const bDate = b.bookingDate || '';
@@ -1006,7 +1011,7 @@ export default function AdminPage() {
     weeks.forEach(({ label, mobileLabel, startDay, endDay }) => {
       const cRev = bookings
         .filter((b) => {
-          if (b.bookingStatus === 'CANCELLED') return false;
+          if (b.bookingStatus === 'CANCELLED' || b.paymentStatus !== 'PAID') return false;
           const targetDate = b.bookingDate || (b.createdAt || '').split('T')[0];
           if (!targetDate) return false;
           const [by, bm, bd] = targetDate.split('-').map(Number);
@@ -1036,7 +1041,7 @@ export default function AdminPage() {
 
       const cRev = bookings
         .filter((b) => {
-          if (b.bookingStatus === 'CANCELLED') return false;
+          if (b.bookingStatus === 'CANCELLED' || b.paymentStatus !== 'PAID') return false;
           const bDate = b.bookingDate;
           const cDate = (b.createdAt || '').split('T')[0];
           return bDate === dStr || cDate === dStr;
@@ -1053,11 +1058,11 @@ export default function AdminPage() {
 
   const maxChartBar = Math.max(...chartDays.map((c) => c.total), 100);
 
-  // All-time Grand Total Revenues
+  // All-time Grand Total Revenues (ONLY verified & paid bookings count as income)
   const courtRevenue = bookings
-    .filter((b) => b.bookingStatus !== 'CANCELLED')
-    .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
-  const storeRevenue = posOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    .filter((b) => b.bookingStatus !== 'CANCELLED' && b.paymentStatus === 'PAID')
+    .reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const storeRevenue = posOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
   const combinedTotalRevenue = courtRevenue + storeRevenue;
 
   // Inventory stats
@@ -1071,7 +1076,7 @@ export default function AdminPage() {
     if (!hasProofOrGcash) return false;
 
     if (proofFilter === 'PENDING') {
-      return b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentStatus !== 'PAID' && b.bookingStatus !== 'CANCELLED');
+      return b.bookingStatus !== 'CANCELLED' && (b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentStatus !== 'PAID' && b.paymentMethod === 'GCASH'));
     }
     if (proofFilter === 'PAID') {
       return b.paymentStatus === 'PAID';
@@ -1879,7 +1884,7 @@ export default function AdminPage() {
                   }`}
                 >
                   <AlertCircle className="w-3.5 h-3.5" />
-                  <span>Pending ({bookings.filter(b => b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl)).length})</span>
+                  <span>Pending ({pendingProofsCount})</span>
                 </button>
 
                 <button
