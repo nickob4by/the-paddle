@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
-import CourtCard from '@/components/CourtCard';
 import CalendarSlotPicker from '@/components/CalendarSlotPicker';
 import BookingModal from '@/components/BookingModal';
 import LookupModal from '@/components/LookupModal';
@@ -177,81 +176,17 @@ export default function HomePage() {
             <p className="text-slate-400">No active courts currently available. Please check back shortly.</p>
           </div>
         ) : (
-          <div className="space-y-14">
-            {/* Unified Calendar & Slot Picker with Concise Court Cards */}
-            <div id="calendar-view" className="scroll-mt-24">
-              {selectedCourt && (
-                <CalendarSlotPicker
-                  courts={courts}
-                  selectedCourt={selectedCourt}
-                  onSelectCourt={(c) => setSelectedCourt(c)}
-                  onProceedToBooking={handleProceedToBooking}
-                />
-              )}
-            </div>
-
-            {/* Detailed Court Highlights & Amenities */}
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h3 className="text-xl font-black text-white">Court Specs & Details</h3>
-                  <p className="text-xs text-slate-400">Tournament standard cushioning and championship lighting</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {courts.map((court) => (
-                  <CourtCard
-                    key={court.id}
-                    court={court}
-                    isSelected={selectedCourt?.id === court.id}
-                    onSelect={(c) => {
-                      setSelectedCourt(c);
-                      document.getElementById('calendar-view')?.scrollIntoView({ behavior: 'smooth' });
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
+          <div id="calendar-view" className="scroll-mt-24">
+            {selectedCourt && (
+              <CalendarSlotPicker
+                courts={courts}
+                selectedCourt={selectedCourt}
+                onSelectCourt={(c) => setSelectedCourt(c)}
+                onProceedToBooking={handleProceedToBooking}
+              />
+            )}
           </div>
         )}
-      </section>
-
-      {/* Facility & Policy Info Section */}
-      <section className="py-16 bg-slate-900/50 border-t border-slate-900">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="w-10 h-10 rounded-xl bg-lime-500/10 flex items-center justify-center text-lime-400 mb-4">
-                <MapPin className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-lg text-white mb-2">Facility & Amenities</h3>
-              <p className="text-sm text-slate-400 leading-relaxed">
-                Includes spectator seating, pro-shop paddle rentals (₱50/paddle), locker rooms, shower facilities, and tournament grade lighting.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 mb-4">
-                <Zap className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-lg text-white mb-2">GCash & Cash Options</h3>
-              <p className="text-sm text-slate-400 leading-relaxed">
-                Scan our official GCash QR code for cashless reservations or opt for Cash payment at the reception desk before your match begins.
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-400 mb-4">
-                <Clock className="w-5 h-5" />
-              </div>
-              <h3 className="font-bold text-lg text-white mb-2">Cancellation Policy</h3>
-              <p className="text-sm text-slate-400 leading-relaxed">
-                Need to reschedule? Please inform our desk at least 4 hours before your booked time slot with your Booking Reference code.
-              </p>
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* Footer */}
