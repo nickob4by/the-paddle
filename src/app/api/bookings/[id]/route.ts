@@ -77,6 +77,10 @@ export async function PATCH(
   }
 }
 
+// Support PUT as an alias to PATCH for seamless updates
+export const PUT = PATCH;
+
+
 export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> }

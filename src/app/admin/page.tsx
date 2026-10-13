@@ -32,7 +32,12 @@ import {
   Moon,
   Bell,
   Volume2,
-  VolumeX
+  VolumeX,
+  FileCheck,
+  Receipt,
+  ExternalLink,
+  ZoomIn,
+  Info
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -43,8 +48,8 @@ export default function AdminPage() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Active Tab: 'bookings' | 'courts' | 'settings'
-  const [activeTab, setActiveTab] = useState<'bookings' | 'courts' | 'settings'>('bookings');
+  // Active Tab: 'bookings' | 'proofs' | 'courts' | 'settings'
+  const [activeTab, setActiveTab] = useState<'bookings' | 'proofs' | 'courts' | 'settings'>('bookings');
 
   // Data states
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -75,6 +80,13 @@ export default function AdminPage() {
 
   // View Receipt Modal
   const [viewReceiptUrl, setViewReceiptUrl] = useState<string | null>(null);
+
+  // Dedicated Payment Proof Verification Center states
+  const [proofFilter, setProofFilter] = useState<'ALL' | 'PENDING' | 'PAID' | 'CANCELLED'>('PENDING');
+  const [verifyingBooking, setVerifyingBooking] = useState<Booking | null>(null);
+  const [proofActionLoading, setProofActionLoading] = useState(false);
+  const [proofNotes, setProofNotes] = useState('');
+  const [copiedRef, setCopiedRef] = useState(false);
 
   // Settings form states
   const [settingsQrUrl, setSettingsQrUrl] = useState('');
@@ -287,23 +299,89 @@ export default function AdminPage() {
     bookingId: string,
     updates: {
       bookingStatus?: 'CONFIRMED' | 'CANCELLED';
-      paymentStatus?: 'PAID' | 'UNPAID';
+      paymentStatus?: 'PAID' | 'UNPAID' | 'VERIFICATION_PENDING';
+      notes?: string;
+      gcashReference?: string;
     }
   ) => {
     try {
       const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates)
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.booking) {
         setBookings((prev) =>
-          prev.map((b) => (b.id === bookingId ? { ...b, ...updates } : b))
+          prev.map((b) => (b.id === bookingId ? data.booking : b))
         );
+        if (verifyingBooking && verifyingBooking.id === bookingId) {
+          setVerifyingBooking(data.booking);
+        }
+        return data.booking;
       }
     } catch (err) {
+      console.error('Failed to update booking:', err);
+    }
+    return null;
+  };
+
+  // Open Verification Modal for a Booking
+  const openVerificationModal = (booking: Booking) => {
+    setVerifyingBooking(booking);
+    setProofNotes(booking.notes || '');
+    setCopiedRef(false);
+  };
+
+  // Quick Action in Verification Modal: Approve
+  const handleApproveProof = async (booking: Booking) => {
+    try {
+      setProofActionLoading(true);
+      await updateBookingStatus(booking.id, {
+        paymentStatus: 'PAID',
+        bookingStatus: 'CONFIRMED',
+        notes: proofNotes.trim() || booking.notes
+      });
+      setVerifyingBooking(null);
+    } catch (err) {
       console.error(err);
+    } finally {
+      setProofActionLoading(false);
+    }
+  };
+
+  // Quick Action in Verification Modal: Reject & Release Slots
+  const handleRejectProof = async (booking: Booking) => {
+    if (!confirm(`Are you sure you want to REJECT payment proof for ${booking.bookingCode}? This will cancel the booking and immediately release the court slot for other players.`)) {
+      return;
+    }
+    try {
+      setProofActionLoading(true);
+      await updateBookingStatus(booking.id, {
+        paymentStatus: 'UNPAID',
+        bookingStatus: 'CANCELLED',
+        notes: proofNotes.trim() ? `[REJECTED]: ${proofNotes.trim()}` : '[REJECTED]: Payment proof invalid'
+      });
+      setVerifyingBooking(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setProofActionLoading(false);
+    }
+  };
+
+  // Save admin notes without changing status
+  const handleSaveProofNotes = async (booking: Booking) => {
+    try {
+      setProofActionLoading(true);
+      await updateBookingStatus(booking.id, {
+        notes: proofNotes.trim()
+      });
+      alert('Verification notes saved!');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setProofActionLoading(false);
     }
   };
 
@@ -534,9 +612,28 @@ export default function AdminPage() {
   // Calculate statistics
   const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingDate === todayStr).length : 0;
   const pendingPaymentCount = bookings.filter((b) => b.paymentStatus === 'VERIFICATION_PENDING' || b.paymentStatus === 'UNPAID').length;
+  const pendingProofsCount = bookings.filter((b) => b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl)).length;
   const totalRevenue = bookings
     .filter((b) => b.bookingStatus !== 'CANCELLED')
     .reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+
+  // Filtered Proofs for Payment Proof Center
+  const filteredProofs = bookings.filter((b) => {
+    // Only bookings that paid via GCASH or have a receipt uploaded or are pending verification
+    const hasProofOrGcash = b.paymentMethod === 'GCASH' || Boolean(b.receiptUrl) || b.paymentStatus === 'VERIFICATION_PENDING';
+    if (!hasProofOrGcash) return false;
+
+    if (proofFilter === 'PENDING') {
+      return b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentStatus !== 'PAID' && b.bookingStatus !== 'CANCELLED');
+    }
+    if (proofFilter === 'PAID') {
+      return b.paymentStatus === 'PAID';
+    }
+    if (proofFilter === 'CANCELLED') {
+      return b.bookingStatus === 'CANCELLED';
+    }
+    return true; // 'ALL'
+  });
 
   // If Not Authenticated, show Login Form
   if (!isAuthenticated) {
@@ -771,12 +868,23 @@ export default function AdminPage() {
             <span className="text-xl sm:text-2xl font-black text-slate-950 dark:text-white mt-1 sm:mt-2 block">{todayBookingsCount}</span>
           </div>
 
-          <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div
+            onClick={() => setActiveTab('proofs')}
+            className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm cursor-pointer hover:border-amber-400/50 dark:hover:border-amber-500/50 transition-all"
+            title="Click to view Payment Proofs verification queue"
+          >
             <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px] sm:text-xs">
-              <span className="truncate">Pending Pay</span>
-              <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" />
+              <span className="truncate">Pending Proofs</span>
+              <FileCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-500 dark:text-amber-400 flex-shrink-0" />
             </div>
-            <span className="text-xl sm:text-2xl font-black text-amber-500 dark:text-amber-400 mt-1 sm:mt-2 block">{pendingPaymentCount}</span>
+            <div className="flex items-center gap-2 mt-1 sm:mt-2">
+              <span className="text-xl sm:text-2xl font-black text-amber-500 dark:text-amber-400 block">{pendingProofsCount}</span>
+              {pendingProofsCount > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 animate-pulse">
+                  Action Required
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="p-3.5 sm:p-5 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
@@ -802,6 +910,23 @@ export default function AdminPage() {
           >
             <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Bookings ({bookings.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('proofs')}
+            className={`px-3 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm font-bold flex items-center gap-1.5 sm:gap-2 border-b-2 whitespace-nowrap transition-colors cursor-pointer relative ${
+              activeTab === 'proofs'
+                ? 'border-lime-500 text-lime-600 dark:text-lime-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span>Payment Proofs</span>
+            {pendingProofsCount > 0 && (
+              <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 animate-pulse">
+                {pendingProofsCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -1045,6 +1170,240 @@ export default function AdminPage() {
                 </table>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* TAB 1.5: PAYMENT PROOFS & VERIFICATION CENTER */}
+        {activeTab === 'proofs' && (
+          <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-200">
+            {/* Header & Filter Bar */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-lime-500/15 text-lime-600 dark:text-lime-400">
+                    <Receipt className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-slate-950 dark:text-white">
+                    Payment Proof & Verification Center
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Inspect GCash transaction receipts side-by-side, match reference numbers, and approve or release reserved court slots with 1 click.
+                </p>
+              </div>
+
+              {/* Status Filter Tabs */}
+              <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl self-start md:self-auto overflow-x-auto">
+                <button
+                  onClick={() => setProofFilter('PENDING')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    proofFilter === 'PENDING'
+                      ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>Pending ({bookings.filter(b => b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl)).length})</span>
+                </button>
+
+                <button
+                  onClick={() => setProofFilter('PAID')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    proofFilter === 'PAID'
+                      ? 'bg-white dark:bg-slate-900 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>Verified & Paid</span>
+                </button>
+
+                <button
+                  onClick={() => setProofFilter('CANCELLED')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    proofFilter === 'CANCELLED'
+                      ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  <XCircle className="w-3.5 h-3.5" />
+                  <span>Rejected / Cancelled</span>
+                </button>
+
+                <button
+                  onClick={() => setProofFilter('ALL')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    proofFilter === 'ALL'
+                      ? 'bg-white dark:bg-slate-900 text-slate-950 dark:text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                  }`}
+                >
+                  All ({bookings.filter(b => b.paymentMethod === 'GCASH' || Boolean(b.receiptUrl)).length})
+                </button>
+              </div>
+            </div>
+
+            {/* Proofs Grid / List */}
+            {filteredProofs.length === 0 ? (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center shadow-sm">
+                <Receipt className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-700 mb-3" />
+                <h4 className="text-base font-bold text-slate-900 dark:text-white">
+                  No payment proofs in this queue
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+                  {proofFilter === 'PENDING'
+                    ? 'Great news! All submitted GCash payments have been reviewed and verified.'
+                    : 'No receipts match the selected filter category.'}
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                {filteredProofs.map((booking) => {
+                  const isPending = booking.paymentStatus === 'VERIFICATION_PENDING' || (booking.paymentStatus !== 'PAID' && booking.bookingStatus !== 'CANCELLED');
+                  const isPaid = booking.paymentStatus === 'PAID';
+                  const isCancelled = booking.bookingStatus === 'CANCELLED';
+
+                  return (
+                    <div
+                      key={booking.id}
+                      className={`bg-white dark:bg-slate-900 border rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between transition-all hover:shadow-md ${
+                        isPending
+                          ? 'border-amber-400/60 dark:border-amber-500/40 ring-1 ring-amber-400/20'
+                          : isPaid
+                          ? 'border-emerald-300 dark:border-emerald-800/60'
+                          : 'border-slate-200 dark:border-slate-800 opacity-80'
+                      }`}
+                    >
+                      {/* Card Header */}
+                      <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700">
+                              {booking.bookingCode}
+                            </span>
+                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              isPaid
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                                : isCancelled
+                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30'
+                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 animate-pulse'
+                            }`}>
+                              {isPaid ? 'Verified Paid' : isCancelled ? 'Rejected' : 'Action Needed'}
+                            </span>
+                          </div>
+                          <h4 className="text-sm font-bold text-slate-950 dark:text-white mt-2">
+                            {booking.clientName}
+                          </h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {booking.clientPhone}
+                          </p>
+                        </div>
+
+                        <div className="text-right flex-shrink-0">
+                          <span className="text-xs text-slate-500 dark:text-slate-400 block font-medium">Total Due</span>
+                          <span className="text-base sm:text-lg font-black text-lime-600 dark:text-lime-400">
+                            ₱{booking.totalAmount.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Content & Receipt Preview */}
+                      <div className="p-4 sm:p-5 flex-1 flex flex-col gap-3.5">
+                        {/* Court & Schedule Details */}
+                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 text-xs space-y-1.5">
+                          <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                            <span>Court:</span>
+                            <span className="font-bold text-slate-900 dark:text-white">{booking.courtName || 'Court'}</span>
+                          </div>
+                          <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                            <span>Schedule:</span>
+                            <span className="font-semibold text-slate-900 dark:text-white">
+                              {booking.bookingDate} ({formatTime(booking.startTime)} - {formatTime(booking.endTime)})
+                            </span>
+                          </div>
+                          {booking.gcashReference && (
+                            <div className="flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-700/60">
+                              <span className="text-slate-500">Ref #:</span>
+                              <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                                {booking.gcashReference}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Receipt Thumbnail */}
+                        {booking.receiptUrl ? (
+                          <div
+                            onClick={() => openVerificationModal(booking)}
+                            className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black h-40 cursor-pointer flex items-center justify-center"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={booking.receiptUrl}
+                              alt={`Receipt proof for ${booking.bookingCode}`}
+                              className="h-full w-full object-contain group-hover:scale-105 transition-transform duration-200"
+                            />
+                            <div className="absolute inset-0 bg-slate-950/40 group-hover:bg-slate-950/20 transition-colors flex items-center justify-center">
+                              <span className="px-3 py-1.5 rounded-xl bg-slate-900/90 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg backdrop-blur-sm">
+                                <ZoomIn className="w-3.5 h-3.5" />
+                                Inspect Proof
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-amber-300 dark:border-amber-800/80 bg-amber-50/50 dark:bg-amber-950/20 p-4 text-center">
+                            <AlertCircle className="w-6 h-6 mx-auto text-amber-500 mb-1" />
+                            <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                              No Receipt Uploaded
+                            </p>
+                            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                              {booking.gcashReference ? `Customer submitted Ref: ${booking.gcashReference}` : 'Customer chosen GCash without screenshot'}
+                            </p>
+                          </div>
+                        )}
+
+                        {booking.notes && (
+                          <div className="text-[11px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl">
+                            <span className="font-bold block text-slate-800 dark:text-slate-300 mb-0.5">Admin Note:</span>
+                            {booking.notes}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Footer Actions */}
+                      <div className="p-4 sm:p-5 pt-0 flex gap-2">
+                        {isPending ? (
+                          <>
+                            <button
+                              onClick={() => openVerificationModal(booking)}
+                              className="flex-1 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-lime-500/20 transition-all cursor-pointer"
+                            >
+                              <CheckCircle className="w-4 h-4 stroke-[2.5]" />
+                              <span>Verify & Review</span>
+                            </button>
+                            <button
+                              onClick={() => handleRejectProof(booking)}
+                              className="p-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/40 transition-colors cursor-pointer"
+                              title="Reject & Release Slot"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => openVerificationModal(booking)}
+                            className="w-full py-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>View Full Details</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -1486,6 +1845,224 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+
+      {/* Dedicated Payment Proof Verification Split-Screen Modal */}
+      {verifyingBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-hidden animate-in fade-in duration-200">
+          <div className="relative w-full max-w-4xl max-h-[94vh] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="flex-shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-lime-500/15 text-lime-600 dark:text-lime-400">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-slate-950 dark:text-white">
+                      Payment Verification
+                    </h3>
+                    <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700">
+                      {verifyingBooking.bookingCode}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Review player payment receipt against reservation details
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setVerifyingBooking(null)}
+                className="p-2 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body - 2 Columns on desktop */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
+              {/* LEFT COLUMN: High-Res Zoomable Receipt Screenshot */}
+              <div className="flex flex-col">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2 flex items-center justify-between">
+                  <span>GCash Receipt Screenshot</span>
+                  {verifyingBooking.receiptUrl && (
+                    <a
+                      href={verifyingBooking.receiptUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <ExternalLink className="w-3 h-3" /> Full View
+                    </a>
+                  )}
+                </span>
+
+                <div className="flex-1 min-h-[300px] sm:min-h-[380px] rounded-2xl bg-black border border-slate-200 dark:border-slate-800 p-2 flex items-center justify-center overflow-hidden relative">
+                  {verifyingBooking.receiptUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={verifyingBooking.receiptUrl}
+                      alt="GCash Payment Receipt"
+                      className="max-h-[50vh] sm:max-h-[55vh] w-auto object-contain rounded-xl hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="text-center p-6 text-slate-400">
+                      <AlertCircle className="w-10 h-10 mx-auto mb-2 text-amber-500" />
+                      <p className="font-bold text-sm text-white">No Image Receipt Uploaded</p>
+                      <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                        The player chose GCash at checkout but did not attach an image receipt screenshot.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: Reservation & Payment Details, Reference Matching, Notes */}
+              <div className="flex flex-col justify-between space-y-4">
+                <div className="space-y-4">
+                  {/* Amount Breakdown Box */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200/80 dark:border-slate-700/60">
+                      <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Expected Total</span>
+                      <span className="text-2xl font-black text-lime-600 dark:text-lime-400 font-mono">
+                        ₱{verifyingBooking.totalAmount.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Payment Method</span>
+                        <span className="font-bold text-slate-900 dark:text-white uppercase">{verifyingBooking.paymentMethod}</span>
+                      </div>
+                      <div>
+                        <span className="text-[11px] text-slate-400 block">Current Status</span>
+                        <span className={`font-black uppercase text-[11px] ${
+                          verifyingBooking.paymentStatus === 'PAID'
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-amber-500'
+                        }`}>
+                          {verifyingBooking.paymentStatus}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* GCash Reference Number Matcher */}
+                  <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-blue-950 dark:text-blue-300">
+                        Player&apos;s Submitted GCash Ref #
+                      </span>
+                      {verifyingBooking.gcashReference && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(verifyingBooking.gcashReference || '');
+                            setCopiedRef(true);
+                            setTimeout(() => setCopiedRef(false), 2000);
+                          }}
+                          className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-bold cursor-pointer"
+                        >
+                          {copiedRef ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedRef ? 'Copied!' : 'Copy Ref'}</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {verifyingBooking.gcashReference ? (
+                      <div className="font-mono text-base font-black text-slate-900 dark:text-white tracking-wider bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-blue-200 dark:border-blue-800">
+                        {verifyingBooking.gcashReference}
+                      </div>
+                    ) : (
+                      <p className="text-xs italic text-slate-500">
+                        No reference number typed by customer (inspect receipt screenshot directly).
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Reservation Details */}
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-xs space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 dark:text-slate-400">Player Name:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{verifyingBooking.clientName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 dark:text-slate-400">Contact Number:</span>
+                      <span className="font-semibold text-slate-900 dark:text-white">{verifyingBooking.clientPhone}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 dark:text-slate-400">Court:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">{verifyingBooking.courtName || 'Court'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500 dark:text-slate-400">Date & Slot:</span>
+                      <span className="font-semibold text-slate-900 dark:text-white">
+                        {verifyingBooking.bookingDate} • {formatTime(verifyingBooking.startTime)} - {formatTime(verifyingBooking.endTime)} ({verifyingBooking.durationHours} hr)
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Verification Notes Input */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Admin Audit Notes / Memo
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleSaveProofNotes(verifyingBooking)}
+                        disabled={proofActionLoading}
+                        className="text-[10px] text-lime-600 dark:text-lime-400 hover:underline font-bold cursor-pointer"
+                      >
+                        Save Note Only
+                      </button>
+                    </div>
+                    <textarea
+                      rows={2}
+                      value={proofNotes}
+                      onChange={(e) => setProofNotes(e.target.value)}
+                      placeholder="e.g. Verified on GCash app at 3:15 PM, Ref matched."
+                      className="w-full px-3.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-lime-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Primary Action Buttons */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                  <div className="flex gap-2.5">
+                    {/* Approve Button */}
+                    <button
+                      type="button"
+                      disabled={proofActionLoading}
+                      onClick={() => handleApproveProof(verifyingBooking)}
+                      className="flex-1 py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-lime-500/25 transition-all cursor-pointer"
+                    >
+                      <CheckCircle className="w-4 h-4 stroke-[3]" />
+                      <span>{proofActionLoading ? 'Processing...' : 'Approve & Confirm'}</span>
+                    </button>
+
+                    {/* Reject & Release Button */}
+                    <button
+                      type="button"
+                      disabled={proofActionLoading}
+                      onClick={() => handleRejectProof(verifyingBooking)}
+                      className="py-3 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 text-rose-600 dark:text-rose-400 font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 border border-rose-200 dark:border-rose-900/40 transition-colors cursor-pointer"
+                      title="Reject proof, mark CANCELLED, and immediately release court slots"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>Reject & Release Slot</span>
+                    </button>
+                  </div>
+
+                  <p className="text-[10px] text-center text-slate-400">
+                    💡 Approving marks payment as <strong>PAID</strong> & booking as <strong>CONFIRMED</strong>. Rejecting immediately releases court slot availability for other customers.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
