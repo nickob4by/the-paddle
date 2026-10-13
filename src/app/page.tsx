@@ -155,50 +155,61 @@ export default function HomePage() {
 
       {/* Courts & Booking Section */}
       <section id="courts-section" className="py-16 md:py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full">
-        <div className="text-center max-w-2xl mx-auto mb-12">
+        <div className="text-center max-w-2xl mx-auto mb-10">
           <span className="text-xs font-extrabold uppercase tracking-wider text-lime-400 bg-lime-500/10 px-3 py-1 rounded-full border border-lime-500/20">
-            Step 1 • Choose Your Court
+            Real-Time Availability
           </span>
           <h2 className="text-3xl sm:text-4xl font-black text-white mt-3">
-            Available Pickleball Courts
+            Book Court & Play Time
           </h2>
           <p className="text-sm text-slate-400 mt-2">
-            Select a court below to load its real-time schedule and reserve your preferred hours.
+            Select your preferred date and time slot below. All courts are displayed with live availability.
           </p>
         </div>
 
-        {/* Courts Grid */}
+        {/* Live Multi-Court Schedule & Slot Picker */}
         {loadingCourts ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-pulse">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-64 rounded-2xl bg-slate-900 border border-slate-800" />
-            ))}
+          <div className="h-96 rounded-3xl bg-slate-900 border border-slate-800 animate-pulse flex items-center justify-center">
+            <span className="text-slate-500 font-medium">Loading schedule...</span>
           </div>
         ) : courts.length === 0 ? (
           <div className="text-center p-12 bg-slate-900 rounded-3xl border border-slate-800">
             <p className="text-slate-400">No active courts currently available. Please check back shortly.</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {courts.map((court) => (
-              <CourtCard
-                key={court.id}
-                court={court}
-                isSelected={selectedCourt?.id === court.id}
-                onSelect={(c) => setSelectedCourt(c)}
+          <div className="space-y-12">
+            {/* Unified Calendar & Slot Picker */}
+            <div id="calendar-view" className="scroll-mt-24">
+              <CalendarSlotPicker
+                courts={courts}
+                selectedCourt={selectedCourt}
+                onCourtChange={(c) => setSelectedCourt(c)}
+                onProceedToBooking={handleProceedToBooking}
               />
-            ))}
-          </div>
-        )}
+            </div>
 
-        {/* Calendar and Time Slot Picker */}
-        {selectedCourt && (
-          <div className="mt-14 scroll-mt-24" id="calendar-view">
-            <CalendarSlotPicker
-              key={selectedCourt.id}
-              selectedCourt={selectedCourt}
-              onProceedToBooking={handleProceedToBooking}
-            />
+            {/* Court Showcase Cards */}
+            <div>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-black text-white">Our Courts</h3>
+                  <p className="text-xs text-slate-400">Tournament standard specs and pro-cushioning</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {courts.map((court) => (
+                  <CourtCard
+                    key={court.id}
+                    court={court}
+                    isSelected={selectedCourt?.id === court.id}
+                    onSelect={(c) => {
+                      setSelectedCourt(c);
+                      document.getElementById('calendar-view')?.scrollIntoView({ behavior: 'smooth' });
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </section>
