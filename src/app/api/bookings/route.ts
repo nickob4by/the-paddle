@@ -79,6 +79,14 @@ export async function POST(request: Request) {
       );
     }
 
+    // Require receipt upload for GCash bookings
+    if (paymentMethod === 'GCASH' && (!receiptUrl || typeof receiptUrl !== 'string' || !receiptUrl.trim())) {
+      return NextResponse.json(
+        { success: false, error: 'Please upload your GCash payment screenshot receipt to complete your booking.' },
+        { status: 400 }
+      );
+    }
+
     // Validate that booking is not in the past (using Philippine / local time UTC+8)
     const nowUtc = new Date();
     // Offset for UTC+8 (Philippines standard time)

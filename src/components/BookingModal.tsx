@@ -157,6 +157,14 @@ export default function BookingModal({
       setErrorMsg('Please enter your contact number.');
       return;
     }
+    if (uploadingReceipt) {
+      setErrorMsg('Your receipt screenshot is still uploading. Please wait a moment.');
+      return;
+    }
+    if (paymentMethod === 'GCASH' && !receiptUrl) {
+      setErrorMsg('Please upload your GCash payment screenshot receipt to confirm your reservation.');
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -435,7 +443,25 @@ export default function BookingModal({
 
                     {/* Receipt Screenshot Upload */}
                     <div className="pt-2">
-                      <label className="block w-full border-2 border-dashed border-blue-300 dark:border-blue-800/80 hover:border-blue-500 rounded-xl p-3 bg-white dark:bg-slate-900/60 cursor-pointer transition-colors">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                          Payment Screenshot Receipt <span className="text-rose-500 font-black">*</span>
+                        </span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                          receiptUrl
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800'
+                            : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 border-rose-300 dark:border-rose-800'
+                        }`}>
+                          {receiptUrl ? '✓ Attached' : 'Required'}
+                        </span>
+                      </div>
+                      <label className={`block w-full border-2 border-dashed rounded-xl p-3 cursor-pointer transition-all ${
+                        receiptUrl
+                          ? 'border-emerald-500/80 bg-emerald-50/30 dark:bg-emerald-950/20'
+                          : errorMsg.includes('receipt')
+                            ? 'border-rose-500 bg-rose-50/60 dark:bg-rose-950/30 ring-2 ring-rose-500/30'
+                            : 'border-blue-400/80 dark:border-blue-700/80 hover:border-blue-500 bg-white dark:bg-slate-900/60'
+                      }`}>
                         <input
                           type="file"
                           accept="image/*"
@@ -446,33 +472,37 @@ export default function BookingModal({
                         {uploadingReceipt ? (
                           <div className="flex items-center justify-center gap-2 text-xs text-blue-600 dark:text-blue-300 py-2">
                             <Upload className="w-4 h-4 animate-bounce" />
-                            <span>Uploading screenshot proof...</span>
+                            <span className="font-semibold">Uploading screenshot proof...</span>
                           </div>
                         ) : receiptUrl ? (
                           <div className="flex items-center gap-3 w-full">
                             <img
                               src={receiptUrl}
                               alt="Payment proof preview"
-                              className="w-12 h-12 object-cover rounded-lg border border-blue-400 flex-shrink-0"
+                              className="w-12 h-12 object-cover rounded-lg border border-emerald-400 flex-shrink-0 shadow-sm"
                             />
                             <div className="text-left flex-1 min-w-0">
                               <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                                <Check className="w-4 h-4 text-emerald-500" /> Screenshot Attached
+                                <Check className="w-4 h-4 text-emerald-500" /> Receipt Proof Attached
                               </span>
-                              <span className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline block mt-0.5">
-                                Tap to replace
+                              <span className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline block mt-0.5 font-medium">
+                                Tap here to replace image
                               </span>
                             </div>
                             <span className="text-xs px-2.5 py-1 rounded-lg bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 font-semibold border border-blue-300 dark:border-blue-500/30 flex-shrink-0">
-                              Replace
+                              Change
                             </span>
                           </div>
                         ) : (
-                          <div className="text-center py-1.5">
-                            <Upload className="w-5 h-5 mx-auto text-blue-600 dark:text-blue-400 mb-1" />
-                            <span className="text-xs font-bold text-slate-900 dark:text-white block">Upload Payment Screenshot</span>
+                          <div className="text-center py-2">
+                            <div className="w-9 h-9 mx-auto rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-1.5">
+                              <Upload className="w-4 h-4" />
+                            </div>
+                            <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                              Upload Payment Screenshot <span className="text-rose-500">*</span>
+                            </span>
                             <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
-                              Upload the confirmation screenshot from your GCash app
+                              Tap to select the confirmation or transaction receipt from your GCash app
                             </span>
                           </div>
                         )}
@@ -499,11 +529,23 @@ export default function BookingModal({
             <div className="flex-shrink-0 p-3 sm:p-4 md:px-6 bg-white/95 dark:bg-slate-900/95 border-t border-slate-200 dark:border-slate-800 z-10">
               <button
                 type="submit"
-                disabled={submitting}
-                className="w-full py-3 sm:py-3.5 rounded-xl bg-lime-500 hover:bg-lime-400 disabled:opacity-50 text-slate-950 font-black text-xs sm:text-sm md:text-base shadow-xl shadow-lime-500/25 transition-all cursor-pointer flex items-center justify-center gap-2"
+                disabled={submitting || uploadingReceipt}
+                className={`w-full py-3 sm:py-3.5 rounded-xl font-black text-xs sm:text-sm md:text-base shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  uploadingReceipt
+                    ? 'bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-300 cursor-wait shadow-none'
+                    : paymentMethod === 'GCASH' && !receiptUrl
+                      ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-600/20'
+                      : 'bg-lime-500 hover:bg-lime-400 text-slate-950 shadow-lime-500/25'
+                }`}
               >
                 {submitting ? (
                   <span>Reserving Court...</span>
+                ) : uploadingReceipt ? (
+                  <span>Uploading Receipt Proof...</span>
+                ) : paymentMethod === 'GCASH' && !receiptUrl ? (
+                  <span className="flex items-center gap-1.5">
+                    <Upload className="w-4 h-4" /> Upload Receipt to Confirm Reservation
+                  </span>
                 ) : (
                   <span>Confirm Booking for ₱{bookingDetails.totalAmount.toLocaleString()}</span>
                 )}
