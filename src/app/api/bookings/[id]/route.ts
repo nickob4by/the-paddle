@@ -57,6 +57,11 @@ export async function PATCH(
       ]
     });
 
+    // If booking is being cancelled, release the booked slots so others can book them
+    if (bookingStatus === 'CANCELLED') {
+      await db.execute({ sql: 'DELETE FROM booked_slots WHERE bookingId = ?', args: [id] });
+    }
+
     const updated = await db.execute({
       sql: `SELECT b.*, c.name as courtName
             FROM bookings b
@@ -84,6 +89,7 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: 'Booking not found' }, { status: 404 });
     }
 
+    await db.execute({ sql: 'DELETE FROM booked_slots WHERE bookingId = ?', args: [id] });
     await db.execute({ sql: 'DELETE FROM bookings WHERE id = ?', args: [id] });
 
     return NextResponse.json({ success: true, message: 'Booking removed successfully' });

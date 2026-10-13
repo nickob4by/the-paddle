@@ -149,39 +149,83 @@ export async function POST(request: Request) {
     let bookingStatus = 'CONFIRMED';
     let paymentStatus = paymentMethod === 'GCASH' ? 'VERIFICATION_PENDING' : 'UNPAID';
 
-    await db.execute({
-      sql: `INSERT INTO bookings (
-              id, bookingCode, courtId, clientName, clientEmail, clientPhone,
-              bookingDate, startTime, endTime, durationHours, totalAmount,
-              paymentMethod, paymentStatus, bookingStatus, gcashReference,
-              receiptUrl, notes, createdAt
-            ) VALUES (
-              ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?,
-              ?, ?, ?, ?,
-              ?, ?, ?
-            )`,
-      args: [
-        id,
-        bookingCode,
-        courtId,
-        clientName.trim(),
-        (clientEmail || '').trim(),
-        clientPhone.trim(),
-        bookingDate,
-        startTime,
-        endTime,
-        durationHours,
-        totalAmount,
-        paymentMethod,
-        paymentStatus,
-        bookingStatus,
-        gcashReference.trim(),
-        receiptUrl,
-        notes.trim(),
-        createdAt
-      ]
-    });
+    // Calculate discrete hour slots for atomic locking
+    const startHourInt = parseInt(startTime.split(':')[0], 10);
+    const endHourInt = parseInt(endTime.split(':')[0], 10);
+    const slotHours: string[] = [];
+    for (let h = startHourInt; h < endHourInt; h++) {
+      slotHours.push(`${h.toString().padStart(2, '0')}:00`);
+    }
+
+    // Build atomic transaction queries:
+    // 1. Insert master booking
+    // 2. Insert each 1-hour slot into booked_slots with UNIQUE(courtId, bookingDate, hourSlot)
+    const batchStatements: Array<{ sql: string; args: any[] }> = [
+      {
+        sql: `INSERT INTO bookings (
+                id, bookingCode, courtId, clientName, clientEmail, clientPhone,
+                bookingDate, startTime, endTime, durationHours, totalAmount,
+                paymentMethod, paymentStatus, bookingStatus, gcashReference,
+                receiptUrl, notes, createdAt
+              ) VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?, ?
+              )`,
+        args: [
+          id,
+          bookingCode,
+          courtId,
+          clientName.trim(),
+          (clientEmail || '').trim(),
+          clientPhone.trim(),
+          bookingDate,
+          startTime,
+          endTime,
+          durationHours,
+          totalAmount,
+          paymentMethod,
+          paymentStatus,
+          bookingStatus,
+          gcashReference.trim(),
+          receiptUrl,
+          notes.trim(),
+          createdAt
+        ]
+      }
+    ];
+
+    for (const slot of slotHours) {
+      batchStatements.push({
+        sql: `INSERT INTO booked_slots (id, bookingId, courtId, bookingDate, hourSlot, createdAt)
+              VALUES (?, ?, ?, ?, ?, ?)`,
+        args: [
+          `slot-${crypto.randomUUID().slice(0, 8)}`,
+          id,
+          courtId,
+          bookingDate,
+          slot,
+          createdAt
+        ]
+      });
+    }
+
+    try {
+      await db.executeBatch(batchStatements);
+    } catch (batchErr: any) {
+      const errMsg = String(batchErr?.message || '');
+      if (errMsg.includes('UNIQUE constraint failed') || errMsg.includes('constraint')) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'One or more of the selected time slots were just booked by another player. Please select another slot.'
+          },
+          { status: 409 }
+        );
+      }
+      throw batchErr;
+    }
 
     const newBookingRes = await db.execute({
       sql: `SELECT b.*, c.name as courtName
@@ -196,8 +240,18 @@ export async function POST(request: Request) {
       message: 'Court booking created successfully!',
       booking: newBookingRes.rows[0]
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating booking:', error);
+    const msg = error?.message || '';
+    if (msg.includes('UNIQUE constraint failed') || msg.includes('constraint')) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'One or more of the selected time slots were just reserved. Please pick another time or court.'
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ success: false, error: 'Internal server error while creating booking' }, { status: 500 });
   }
 }
