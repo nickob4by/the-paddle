@@ -699,7 +699,7 @@ export default function AdminPage() {
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl sm:rounded-2xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs min-w-[700px]">
-                  <thead className="bg-slate-50 dark:bg-slate-850 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">
+                  <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">
                     <tr>
                       <th className="py-3 px-3.5">Booking Code</th>
                       <th className="py-3 px-3.5">Player Details</th>
@@ -720,7 +720,7 @@ export default function AdminPage() {
                       </tr>
                     ) : (
                       filteredBookings.map((b) => (
-                        <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-850/50 transition-colors">
+                        <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                           {/* Code */}
                           <td className="py-3 px-3.5 font-mono font-bold text-lime-600 dark:text-lime-400 whitespace-nowrap">
                             {b.bookingCode}
@@ -1157,7 +1157,7 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => setIsAddCourtOpen(false)}
-                  className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                  className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
                 >
                   Cancel
                 </button>
@@ -1256,7 +1256,7 @@ export default function AdminPage() {
                 <button
                   type="button"
                   onClick={() => setEditingCourt(null)}
-                  className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                  className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
                 >
                   Cancel
                 </button>
