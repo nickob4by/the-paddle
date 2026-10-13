@@ -63,11 +63,21 @@ export default function CalendarSlotPicker({
     if (selectedDate < today) return true; // entire date is in the past
     if (selectedDate > today) return false; // future date
 
-    // For today: check hour
+    // For today:
     const now = new Date();
     const currentHour = now.getHours();
-    const slotHour = parseInt(slotHourStr.split(':')[0], 10);
-    return slotHour < currentHour;
+    const startH = parseInt(openTime.split(':')[0], 10) || 5;
+
+    // If early morning before the facility opens for the day, nothing today has passed yet
+    if (currentHour < startH) {
+      return false;
+    }
+
+    const slotH = parseInt(slotHourStr.split(':')[0], 10);
+    const slotOffset = (slotH - startH + 24) % 24;
+    const currentOffset = (currentHour - startH + 24) % 24;
+
+    return slotOffset < currentOffset;
   };
 
   // Sync props if provided
@@ -100,19 +110,34 @@ export default function CalendarSlotPicker({
     const startH = parseInt(openTime.split(':')[0], 10);
     let endH = parseInt(closeTime.split(':')[0], 10);
 
-    // If closeTime is 00:00 or 24:00, it represents midnight (end of day 24:00)
-    if (closeTime === '00:00' || closeTime === '24:00' || endH === 0) {
+    // If closeTime is 24:00, or closeTime is 00:00 (end of day midnight)
+    if (closeTime === '24:00' || (closeTime === '00:00' && startH > 0)) {
       endH = 24;
     }
 
-    const validStart = Number.isNaN(startH) ? 6 : startH;
-    const validEnd = Number.isNaN(endH) ? 22 : endH;
+    const validStart = Number.isNaN(startH) ? 5 : startH;
+    const validEnd = Number.isNaN(endH) ? 3 : endH;
 
     const slots: string[] = [];
-    for (let h = validStart; h < validEnd; h++) {
-      slots.push(`${h.toString().padStart(2, '0')}:00`);
+
+    if (validStart < validEnd) {
+      // Standard daytime schedule (e.g. 06:00 to 22:00)
+      for (let h = validStart; h < validEnd; h++) {
+        slots.push(`${h.toString().padStart(2, '0')}:00`);
+      }
+    } else {
+      // Continuous overnight operating schedule (e.g. 05:00 to 03:00 next morning)
+      // Part 1: from opening hour until midnight (e.g. 05:00 through 23:00)
+      for (let h = validStart; h < 24; h++) {
+        slots.push(`${h.toString().padStart(2, '0')}:00`);
+      }
+      // Part 2: from midnight until closing hour (e.g. 00:00, 01:00, 02:00)
+      for (let h = 0; h < validEnd; h++) {
+        slots.push(`${h.toString().padStart(2, '0')}:00`);
+      }
     }
-    return slots.length > 0 ? slots : ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00'];
+
+    return slots.length > 0 ? slots : ['05:00', '06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00', '00:00', '01:00', '02:00'];
   }, [openTime, closeTime]);
 
   // Fetch bookings for the selected court and date
@@ -200,13 +225,20 @@ export default function CalendarSlotPicker({
 
   // Check if a specific hour slot is already booked
   const isSlotBooked = (slotHourStr: string) => {
-    const slotHour = parseInt(slotHourStr.split(':')[0], 10);
-    const nextHour = slotHour + 1;
-    const nextHourStr = `${nextHour.toString().padStart(2, '0')}:00`;
+    const slotH = parseInt(slotHourStr.split(':')[0], 10);
 
     return existingBookings.some((b) => {
       if (b.bookingStatus === 'CANCELLED') return false;
-      return b.startTime < nextHourStr && b.endTime > slotHourStr;
+      const bStartH = parseInt(b.startTime.split(':')[0], 10);
+      let bEndH = parseInt(b.endTime.split(':')[0], 10);
+      if (b.endTime === '24:00') bEndH = 24;
+
+      if (bStartH < bEndH) {
+        return slotH >= bStartH && slotH < bEndH;
+      } else {
+        // Overnight booking crossing midnight (e.g. 23:00 to 02:00)
+        return slotH >= bStartH || slotH < bEndH;
+      }
     });
   };
 
@@ -217,17 +249,28 @@ export default function CalendarSlotPicker({
     if (selectedSlots.includes(slot)) {
       setSelectedSlots(selectedSlots.filter((s) => s !== slot));
     } else {
-      const newSlots = [...selectedSlots, slot].sort();
+      const newSlots = [...selectedSlots, slot].sort(
+        (a, b) => timeSlots.indexOf(a) - timeSlots.indexOf(b)
+      );
       setSelectedSlots(newSlots);
     }
   };
 
   // Calculate start time, end time, and duration
-  const sortedSlots = [...selectedSlots].sort();
+  const sortedSlots = [...selectedSlots].sort(
+    (a, b) => timeSlots.indexOf(a) - timeSlots.indexOf(b)
+  );
   const startTime = sortedSlots[0] || '';
   const lastSlot = sortedSlots[sortedSlots.length - 1] || '';
-  const endHour = lastSlot ? parseInt(lastSlot.split(':')[0], 10) + 1 : 0;
-  const endTime = lastSlot ? `${endHour.toString().padStart(2, '0')}:00` : '';
+  const lastSlotIndex = timeSlots.indexOf(lastSlot);
+  let endTime = '';
+  if (lastSlot) {
+    if (lastSlotIndex >= 0 && lastSlotIndex + 1 < timeSlots.length) {
+      endTime = timeSlots[lastSlotIndex + 1];
+    } else {
+      endTime = closeTime === '24:00' ? '24:00' : closeTime;
+    }
+  }
   const durationHours = sortedSlots.length;
   const totalAmount = sortedSlots.reduce((sum, slot) => sum + getSlotRate(selectedCourt, slot), 0);
 
@@ -452,8 +495,8 @@ export default function CalendarSlotPicker({
             const booked = isSlotBooked(slot);
             const inPast = isSlotInPast(slot);
             const isSelected = selectedSlots.includes(slot);
-            const nextH = parseInt(slot.split(':')[0], 10) + 1;
-            const slotEndStr = `${nextH.toString().padStart(2, '0')}:00`;
+            const slotIndex = timeSlots.indexOf(slot);
+            const slotEndStr = slotIndex + 1 < timeSlots.length ? timeSlots[slotIndex + 1] : closeTime;
             const slotRate = getSlotRate(selectedCourt, slot);
             const slotRule = getSlotPricingRule(selectedCourt, slot);
 

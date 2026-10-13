@@ -106,11 +106,16 @@ export async function POST(request: Request) {
 
     if (bookingDate === phTodayStr) {
       const slotHour = parseInt(startTime.split(':')[0], 10);
-      if (slotHour < phHour) {
-        return NextResponse.json(
-          { success: false, error: 'Cannot book time slots that have already passed.' },
-          { status: 400 }
-        );
+      const openHour = 5; // Facility opening hour
+      if (phHour >= openHour) {
+        const slotOffset = (slotHour - openHour + 24) % 24;
+        const currentOffset = (phHour - openHour + 24) % 24;
+        if (slotOffset < currentOffset) {
+          return NextResponse.json(
+            { success: false, error: 'Cannot book time slots that have already passed.' },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -121,42 +126,61 @@ export async function POST(request: Request) {
     }
     const court = courtRes.rows[0] as unknown as Court;
 
-    // Overlap / Collision Check
-    const overlapping = await db.execute({
-      sql: `SELECT * FROM bookings
-            WHERE courtId = ?
-              AND bookingDate = ?
-              AND bookingStatus != 'CANCELLED'
-              AND startTime < ?
-              AND endTime > ?`,
-      args: [courtId, bookingDate, endTime, startTime]
-    });
-
-    if (overlapping.rows.length > 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'The selected time slot has already been reserved. Please pick another time or court.'
-        },
-        { status: 409 }
-      );
-    }
-
     // Calculate discrete hour slots and total amount based on time-range pricing
     const startHourInt = parseInt(startTime.split(':')[0], 10);
-    const endHourInt = parseInt(endTime.split(':')[0], 10);
+    let endHourInt = parseInt(endTime.split(':')[0], 10);
+    if (endTime === '24:00') endHourInt = 24;
+
     const slotHours: string[] = [];
     let totalAmount = 0;
 
-    for (let h = startHourInt; h < endHourInt; h++) {
-      const slotStr = `${h.toString().padStart(2, '0')}:00`;
-      slotHours.push(slotStr);
-      totalAmount += getSlotRate(court, slotStr);
+    if (startHourInt < endHourInt) {
+      for (let h = startHourInt; h < endHourInt; h++) {
+        const slotStr = `${h.toString().padStart(2, '0')}:00`;
+        slotHours.push(slotStr);
+        totalAmount += getSlotRate(court, slotStr);
+      }
+    } else {
+      // Overnight booking crossing midnight (e.g. 23:00 to 02:00)
+      for (let h = startHourInt; h < 24; h++) {
+        const slotStr = `${h.toString().padStart(2, '0')}:00`;
+        slotHours.push(slotStr);
+        totalAmount += getSlotRate(court, slotStr);
+      }
+      for (let h = 0; h < endHourInt; h++) {
+        const slotStr = `${h.toString().padStart(2, '0')}:00`;
+        slotHours.push(slotStr);
+        totalAmount += getSlotRate(court, slotStr);
+      }
     }
 
     const durationHours = Math.max(slotHours.length, 1);
     if (totalAmount === 0 && durationHours > 0) {
       totalAmount = durationHours * Number(court.hourlyRate);
+    }
+
+    // Overlap / Collision Check using discrete hour slots
+    if (slotHours.length > 0) {
+      const placeholders = slotHours.map(() => '?').join(', ');
+      const overlapping = await db.execute({
+        sql: `SELECT bs.hourSlot, b.bookingCode FROM booked_slots bs
+              JOIN bookings b ON bs.bookingId = b.id
+              WHERE bs.courtId = ?
+                AND bs.bookingDate = ?
+                AND b.bookingStatus != 'CANCELLED'
+                AND bs.hourSlot IN (${placeholders})`,
+        args: [courtId, bookingDate, ...slotHours]
+      });
+
+      if (overlapping.rows.length > 0) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'The selected time slot has already been reserved. Please pick another time or court.'
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // Generate readable booking code: e.g. PAD-7492
