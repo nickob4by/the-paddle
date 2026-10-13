@@ -246,15 +246,11 @@ export default function CalendarSlotPicker({
                   <span className="font-black text-white text-base">
                     {court.name}
                   </span>
-                  {isSelected ? (
+                  {isSelected && (
                     <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-lime-500 text-slate-950 text-[10px] font-black">
                       <Check className="w-3 h-3 stroke-[3]" />
                       <span>Active</span>
                     </div>
-                  ) : (
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-medium">
-                      {court.surfaceType}
-                    </span>
                   )}
                 </div>
 
@@ -264,9 +260,11 @@ export default function CalendarSlotPicker({
                     <span className="text-xl font-black text-lime-400">₱{court.hourlyRate}</span>
                     <span className="text-xs text-slate-400 font-medium">/hr</span>
                   </div>
-                  <span className="text-[11px] text-slate-400 truncate max-w-[120px]">
-                    {court.surfaceType}
-                  </span>
+                  {court.description && (
+                    <span className="text-[11px] text-slate-400 truncate max-w-[130px]">
+                      {court.description}
+                    </span>
+                  )}
                 </div>
               </button>
             );
