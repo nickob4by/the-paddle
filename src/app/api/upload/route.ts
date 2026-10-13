@@ -28,6 +28,33 @@ export async function POST(request: Request) {
     const baseName = path.basename(file.name, ext).replace(/[^a-zA-Z0-9_-]/g, '_');
     const fileName = `${timestamp}-${baseName}${ext}`;
 
+    // If Cloudinary credentials are provided (Works on Cloudflare Pages, Netlify, Render, etc.)
+    if (process.env.CLOUDINARY_URL || (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET)) {
+      const { v2: cloudinary } = await import('cloudinary');
+      cloudinary.config({
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        api_secret: process.env.CLOUDINARY_API_SECRET,
+        secure: true
+      });
+
+      const uploadResult = await new Promise<{ secure_url: string }>((resolve, reject) => {
+        cloudinary.uploader.upload_stream(
+          { folder: 'the-paddle', resource_type: 'image' },
+          (err, result) => {
+            if (err || !result) reject(err);
+            else resolve(result);
+          }
+        ).end(buffer);
+      });
+
+      return NextResponse.json({
+        success: true,
+        url: uploadResult.secure_url,
+        fileName
+      });
+    }
+
     // If deployed on Vercel with Vercel Blob Storage enabled
     if (process.env.BLOB_READ_WRITE_TOKEN) {
       const blob = await put(`uploads/${fileName}`, buffer, {
