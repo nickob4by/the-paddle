@@ -47,11 +47,29 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
 
       {/* Ticket Card */}
       <div className="relative bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl overflow-hidden transition-colors">
-        {/* Decorative corner accent */}
-        <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-lime-500/15 to-transparent rounded-bl-full pointer-events-none" />
+        {/* Brand Banner on Ticket */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="relative h-8 sm:h-9 w-auto flex items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/the-paddle-logo-light.png"
+              alt="The Paddle"
+              className="h-8 sm:h-9 w-auto object-contain dark:hidden"
+            />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/the-paddle-logo-dark.png"
+              alt="The Paddle"
+              className="h-8 sm:h-9 w-auto object-contain hidden dark:block"
+            />
+          </div>
+          <span className="text-[10px] font-mono tracking-wider uppercase px-2 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
+            OFFICIAL PASS
+          </span>
+        </div>
 
         {/* Top bar with Booking Code */}
-        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex items-center justify-between py-3 sm:py-4 border-b border-slate-200 dark:border-slate-800">
           <div>
             <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
               Booking Reference

@@ -101,6 +101,24 @@ export default function HomePage() {
             <div className="h-8 mb-5 sm:mb-6" />
           )}
 
+          {/* Official Emblem Logo */}
+          <div className="flex justify-center mb-6">
+            <div className="relative h-14 sm:h-20 md:h-24 w-auto flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/the-paddle-logo-light.png"
+                alt="The Paddle - Recreational Hub"
+                className="h-14 sm:h-20 md:h-24 w-auto object-contain dark:hidden drop-shadow-sm"
+              />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/the-paddle-logo-dark.png"
+                alt="The Paddle - Recreational Hub"
+                className="h-14 sm:h-20 md:h-24 w-auto object-contain hidden dark:block drop-shadow-md"
+              />
+            </div>
+          </div>
+
           {/* Main Headline */}
           <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight text-slate-950 dark:text-white max-w-4xl mx-auto leading-[1.12] sm:leading-[1.08]">
             PLAY LIKE A PRO AT <br />
