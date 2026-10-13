@@ -569,7 +569,7 @@ export default function AdminPage() {
                 type="password"
                 required
                 autoFocus
-                placeholder="Enter PIN (Default: admin123)"
+                placeholder="Enter Admin PIN"
                 value={pinInput}
                 onChange={(e) => setPinInput(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-950 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-lime-500 text-center tracking-widest text-base"
