@@ -72,7 +72,9 @@ import {
   Package,
   ArrowUpRight,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Wrench,
+  AlertTriangle
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -158,6 +160,11 @@ export default function AdminPage() {
   const [settingsNumber, setSettingsNumber] = useState('');
   const [settingsOpenTime, setSettingsOpenTime] = useState('06:00');
   const [settingsCloseTime, setSettingsCloseTime] = useState('22:00');
+  const [settingsIsBookingDisabled, setSettingsIsBookingDisabled] = useState(false);
+  const [settingsClosureReason, setSettingsClosureReason] = useState('');
+  const [settingsClosureBannerText, setSettingsClosureBannerText] = useState('');
+  const [settingsClosureStartDate, setSettingsClosureStartDate] = useState('');
+  const [settingsClosureEndDate, setSettingsClosureEndDate] = useState('');
   const [settingsPin, setSettingsPin] = useState('');
   const [settingsSavedMsg, setSettingsSavedMsg] = useState('');
   const [uploadingQr, setUploadingQr] = useState(false);
@@ -296,6 +303,11 @@ export default function AdminPage() {
           setSettingsNumber(settingsData.settings.gcashNumber || '');
           setSettingsOpenTime(settingsData.settings.courtOpenTime || '06:00');
           setSettingsCloseTime(settingsData.settings.courtCloseTime || '22:00');
+          setSettingsIsBookingDisabled(Number(settingsData.settings.isBookingDisabled) === 1);
+          setSettingsClosureReason(settingsData.settings.closureReason || '');
+          setSettingsClosureBannerText(settingsData.settings.closureBannerText || '');
+          setSettingsClosureStartDate(settingsData.settings.closureStartDate || '');
+          setSettingsClosureEndDate(settingsData.settings.closureEndDate || '');
         }
       }
 
@@ -889,6 +901,11 @@ export default function AdminPage() {
           gcashNumber: settingsNumber.trim(),
           courtOpenTime: settingsOpenTime,
           courtCloseTime: settingsCloseTime,
+          isBookingDisabled: settingsIsBookingDisabled ? 1 : 0,
+          closureReason: settingsClosureReason.trim(),
+          closureBannerText: settingsClosureBannerText.trim(),
+          closureStartDate: settingsClosureStartDate,
+          closureEndDate: settingsClosureEndDate,
           ...(settingsPin.trim() ? { adminPin: settingsPin.trim() } : {})
         })
       });
@@ -2701,14 +2718,14 @@ export default function AdminPage() {
 
                       <button
                         onClick={() => handleToggleCourtActive(court)}
-                        className={`text-xs px-2.5 py-0.5 rounded-full font-bold cursor-pointer transition-colors ${
+                        className={`text-xs px-2.5 py-0.5 rounded-full font-bold cursor-pointer transition-colors flex items-center gap-1 ${
                           court.isActive === 1
                             ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
-                            : 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30'
+                            : 'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30'
                         }`}
                         title="Click to toggle availability"
                       >
-                        {court.isActive === 1 ? 'Active' : 'Disabled'}
+                        {court.isActive === 1 ? '● Active' : '🔧 Maintenance'}
                       </button>
                     </div>
 
@@ -2745,9 +2762,13 @@ export default function AdminPage() {
                   <div className="mt-4 sm:mt-6 pt-3 sm:pt-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
                     <button
                       onClick={() => handleToggleCourtActive(court)}
-                      className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer"
+                      className={`text-xs font-bold transition-colors cursor-pointer ${
+                        court.isActive === 1
+                          ? 'text-amber-600 dark:text-amber-400 hover:text-amber-700'
+                          : 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700'
+                      }`}
                     >
-                      {court.isActive === 1 ? 'Disable' : 'Enable'}
+                      {court.isActive === 1 ? 'Set Maintenance' : 'Set Active'}
                     </button>
 
                     <div className="flex items-center gap-2">
@@ -2924,6 +2945,154 @@ export default function AdminPage() {
                     </select>
                   </div>
                 </div>
+              </div>
+
+              {/* Facility Status & Vacation / Maintenance Closure */}
+              <div className="p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wrench className="w-4 h-4 text-amber-500" />
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                      Facility Status & Booking Availability
+                    </label>
+                  </div>
+                  <span className={`text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-black ${
+                    settingsIsBookingDisabled
+                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30'
+                      : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                  }`}>
+                    {settingsIsBookingDisabled ? '● Bookings Disabled' : '● Accepting Bookings'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Control whether clients can book courts online. Use this when having a vacation, facility-wide maintenance, or holiday break.
+                </p>
+
+                {/* Master Switch */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                      Disable All Bookings Immediately
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
+                      Pauses all new online bookings right away and displays your closure notice on the client page.
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer ml-3 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={settingsIsBookingDisabled}
+                      onChange={(e) => setSettingsIsBookingDisabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-rose-600"></div>
+                  </label>
+                </div>
+
+                {/* Scheduled Vacation / Maintenance Date Range */}
+                <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+                      Scheduled Vacation / Closure Period (Optional)
+                    </span>
+                    {(settingsClosureStartDate || settingsClosureEndDate) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSettingsClosureStartDate('');
+                          setSettingsClosureEndDate('');
+                        }}
+                        className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                      >
+                        Clear Dates
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    If configured, dates inside this period will be automatically blocked for reservations, while future dates remain open.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        From Date
+                      </label>
+                      <input
+                        type="date"
+                        value={settingsClosureStartDate}
+                        onChange={(e) => setSettingsClosureStartDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        To Date (Inclusive)
+                      </label>
+                      <input
+                        type="date"
+                        value={settingsClosureEndDate}
+                        min={settingsClosureStartDate || undefined}
+                        onChange={(e) => setSettingsClosureEndDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Announcement Message & Presets */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Client Notice & Banner Message
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 mb-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSettingsClosureBannerText('We are closed for annual court resurfacing & maintenance. Regular games resume soon!')}
+                      className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                    >
+                      + Maintenance Preset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsClosureBannerText('We are currently on vacation / holiday break! Regular bookings will reopen shortly.')}
+                      className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                    >
+                      + Vacation Preset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsClosureBannerText('Temporarily closed today due to weather conditions. Stay tuned for updates!')}
+                      className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+                    >
+                      + Weather/Typhoon Preset
+                    </button>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={settingsClosureBannerText}
+                    onChange={(e) => setSettingsClosureBannerText(e.target.value)}
+                    placeholder="e.g. We are closed for maintenance from Oct 20 to Oct 25. See you on Oct 26!"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500"
+                  />
+                </div>
+
+                {/* Banner Live Preview */}
+                {(settingsIsBookingDisabled || settingsClosureStartDate || settingsClosureBannerText) && (
+                  <div className="p-3 sm:p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs">
+                    <span className="font-bold flex items-center gap-1 text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-1">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                      Client Banner Preview:
+                    </span>
+                    <p className="font-medium text-xs text-amber-950 dark:text-amber-100">
+                      {settingsClosureBannerText || 'Notice: Online booking is temporarily unavailable due to scheduled vacation or maintenance.'}
+                    </p>
+                    {settingsClosureStartDate && (
+                      <span className="block text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                        📅 Scheduled closure: {settingsClosureStartDate} {settingsClosureEndDate ? `to ${settingsClosureEndDate}` : ''}
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Admin Security */}

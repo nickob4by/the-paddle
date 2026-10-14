@@ -13,7 +13,9 @@ import {
   Sparkles,
   Check,
   Moon,
-  Sun
+  Sun,
+  Wrench,
+  AlertTriangle
 } from 'lucide-react';
 
 interface CalendarSlotPickerProps {
@@ -21,6 +23,10 @@ interface CalendarSlotPickerProps {
   selectedCourt: Court;
   initialOpenTime?: string;
   initialCloseTime?: string;
+  isBookingDisabled?: boolean;
+  closureBannerText?: string;
+  closureStartDate?: string;
+  closureEndDate?: string;
   onSelectCourt: (court: Court) => void;
   onProceedToBooking: (bookingDetails: {
     court: Court;
@@ -37,6 +43,10 @@ export default function CalendarSlotPicker({
   selectedCourt,
   initialOpenTime,
   initialCloseTime,
+  isBookingDisabled = false,
+  closureBannerText = '',
+  closureStartDate = '',
+  closureEndDate = '',
   onSelectCourt,
   onProceedToBooking
 }: CalendarSlotPickerProps) {
@@ -47,6 +57,13 @@ export default function CalendarSlotPicker({
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
   const [openTime, setOpenTime] = useState<string>(initialOpenTime || '06:00');
   const [closeTime, setCloseTime] = useState<string>(initialCloseTime || '22:00');
+
+  const isDateInClosure = Boolean(
+    isBookingDisabled ||
+    (closureStartDate && closureEndDate && selectedDate >= closureStartDate && selectedDate <= closureEndDate) ||
+    (closureStartDate && !closureEndDate && selectedDate === closureStartDate)
+  );
+  const isCurrentCourtInMaintenance = selectedCourt?.isActive === 0;
 
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -350,13 +367,18 @@ export default function CalendarSlotPicker({
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
           {courts.map((court) => {
             const isSelected = selectedCourt?.id === court.id;
+            const isCourtMaintenance = court.isActive === 0;
             return (
               <button
                 key={court.id}
                 type="button"
                 onClick={() => onSelectCourt(court)}
                 className={`p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
-                  isSelected
+                  isCourtMaintenance
+                    ? isSelected
+                      ? 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-500 ring-2 ring-amber-500/30 shadow-md'
+                      : 'bg-amber-50/40 dark:bg-amber-950/15 border-amber-200/80 dark:border-amber-900/40 hover:border-amber-300'
+                    : isSelected
                     ? 'bg-lime-50 dark:bg-slate-800/95 border-lime-500 ring-2 ring-lime-500/30 shadow-md'
                     : 'bg-slate-50/70 dark:bg-slate-950/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800'
                 }`}
@@ -366,12 +388,17 @@ export default function CalendarSlotPicker({
                   <span className="font-black text-slate-900 dark:text-white text-sm sm:text-base">
                     {court.name}
                   </span>
-                  {isSelected && (
+                  {isCourtMaintenance ? (
+                    <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30 text-[10px] font-black">
+                      <Wrench className="w-3 h-3" />
+                      <span>Maintenance</span>
+                    </div>
+                  ) : isSelected ? (
                     <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-lime-500 text-slate-950 text-[10px] font-black">
                       <Check className="w-3 h-3 stroke-[3]" />
                       <span>Active</span>
                     </div>
-                  )}
+                  ) : null}
                 </div>
 
                 {/* Pricing & description */}
@@ -498,8 +525,66 @@ export default function CalendarSlotPicker({
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="mt-5 sm:mt-6 flex flex-wrap items-center gap-3 sm:gap-4 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/40 p-2.5 sm:p-3 rounded-xl border border-slate-200 dark:border-slate-800/60">
+      {/* STEP 3: TIME SLOTS OR CLOSURE / MAINTENANCE CARDS */}
+      {(() => {
+        const isDateInClosure = Boolean(
+          isBookingDisabled ||
+          (closureStartDate && closureEndDate && selectedDate >= closureStartDate && selectedDate <= closureEndDate) ||
+          (closureStartDate && !closureEndDate && selectedDate === closureStartDate)
+        );
+        const isCurrentCourtInMaintenance = selectedCourt?.isActive === 0;
+
+        if (isDateInClosure) {
+          return (
+            <div className="mt-6 sm:mt-7 p-6 sm:p-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center animate-in fade-in">
+              <AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 text-amber-500 mx-auto mb-3" />
+              <h3 className="text-base sm:text-lg font-black text-slate-950 dark:text-white">
+                Facility Closed / Vacation
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-lg mx-auto mt-2 leading-relaxed">
+                {closureBannerText || 'Online booking is temporarily unavailable for this date due to scheduled maintenance or vacation. Regular reservations will resume shortly!'}
+              </p>
+              {closureStartDate && (
+                <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-900 dark:text-amber-300 text-xs font-bold">
+                  <span>Closed Period: {closureStartDate} {closureEndDate ? `to ${closureEndDate}` : ''}</span>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        if (isCurrentCourtInMaintenance) {
+          return (
+            <div className="mt-6 sm:mt-7 p-6 sm:p-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center animate-in fade-in">
+              <Wrench className="w-10 h-10 sm:w-12 sm:h-12 text-amber-500 mx-auto mb-3" />
+              <h3 className="text-base sm:text-lg font-black text-slate-950 dark:text-white">
+                {selectedCourt?.name} is Under Maintenance
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 max-w-md mx-auto mt-2 leading-relaxed">
+                This court is temporarily unavailable while maintenance is being carried out.
+              </p>
+              {courts.filter((c) => c.isActive === 1).length > 0 && (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const active = courts.find((c) => c.isActive === 1);
+                      if (active) onSelectCourt(active);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold text-xs shadow-md transition-all cursor-pointer hover:scale-105"
+                  >
+                    Switch to {courts.find((c) => c.isActive === 1)?.name || 'Active Court'}
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <>
+            {/* Legend */}
+            <div className="mt-5 sm:mt-6 flex flex-wrap items-center gap-3 sm:gap-4 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/40 p-2.5 sm:p-3 rounded-xl border border-slate-200 dark:border-slate-800/60">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-md bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700" />
           <span>Available</span>
@@ -668,9 +753,12 @@ export default function CalendarSlotPicker({
           })}
         </div>
       </div>
+    </>
+  );
+})()}
 
       {/* Bottom Summary Bar */}
-      {selectedSlots.length > 0 && selectedDate && selectedCourt && (
+      {!isDateInClosure && !isCurrentCourtInMaintenance && selectedSlots.length > 0 && selectedDate && selectedCourt && (
         <div className="mt-6 sm:mt-8 p-4 sm:p-5 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-lime-500/50 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2">
           <div className="space-y-0.5 sm:space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -719,7 +807,7 @@ export default function CalendarSlotPicker({
         </div>
       )}
 
-      {selectedSlots.length === 0 && (
+      {!isDateInClosure && !isCurrentCourtInMaintenance && selectedSlots.length === 0 && (
         <div className="mt-5 sm:mt-6 p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 flex items-center gap-2.5 text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
           <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 dark:text-amber-400 flex-shrink-0" />
           <span>Click on one or more available time slots above to select your play time.</span>

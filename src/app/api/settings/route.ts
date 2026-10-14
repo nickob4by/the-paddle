@@ -5,7 +5,7 @@ import { SystemSettings } from '@/lib/types';
 export async function GET(request: Request) {
   try {
     const res = await db.execute({
-      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, updatedAt FROM settings WHERE id = ?',
+      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, updatedAt FROM settings WHERE id = ?',
       args: ['default']
     });
 
@@ -23,7 +23,19 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   try {
     const body = await request.json();
-    const { gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, adminPin } = body;
+    const {
+      gcashQrUrl,
+      gcashAccountName,
+      gcashNumber,
+      courtOpenTime,
+      courtCloseTime,
+      adminPin,
+      isBookingDisabled,
+      closureReason,
+      closureBannerText,
+      closureStartDate,
+      closureEndDate
+    } = body;
 
     const currentRes = await db.execute({ sql: 'SELECT * FROM settings WHERE id = ?', args: ['default'] });
     if (currentRes.rows.length === 0) {
@@ -40,6 +52,11 @@ export async function PUT(request: Request) {
                 courtOpenTime = COALESCE(?, courtOpenTime),
                 courtCloseTime = COALESCE(?, courtCloseTime),
                 adminPin = COALESCE(?, adminPin),
+                isBookingDisabled = COALESCE(?, isBookingDisabled),
+                closureReason = COALESCE(?, closureReason),
+                closureBannerText = COALESCE(?, closureBannerText),
+                closureStartDate = COALESCE(?, closureStartDate),
+                closureEndDate = COALESCE(?, closureEndDate),
                 updatedAt = ?
             WHERE id = ?`,
       args: [
@@ -49,13 +66,18 @@ export async function PUT(request: Request) {
         courtOpenTime !== undefined ? courtOpenTime : null,
         courtCloseTime !== undefined ? courtCloseTime : null,
         adminPin ? adminPin : null,
+        isBookingDisabled !== undefined ? Number(isBookingDisabled) : null,
+        closureReason !== undefined ? closureReason : null,
+        closureBannerText !== undefined ? closureBannerText : null,
+        closureStartDate !== undefined ? closureStartDate : null,
+        closureEndDate !== undefined ? closureEndDate : null,
         updatedAt,
         'default'
       ]
     });
 
     const updatedRes = await db.execute({
-      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, updatedAt FROM settings WHERE id = ?',
+      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, updatedAt FROM settings WHERE id = ?',
       args: ['default']
     });
 

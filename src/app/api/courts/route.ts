@@ -5,15 +5,7 @@ import crypto from 'crypto';
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const includeInactive = searchParams.get('all') === 'true';
-
-    let res;
-    if (includeInactive) {
-      res = await db.execute('SELECT * FROM courts ORDER BY createdAt ASC');
-    } else {
-      res = await db.execute('SELECT * FROM courts WHERE isActive = 1 ORDER BY createdAt ASC');
-    }
+    const res = await db.execute('SELECT * FROM courts ORDER BY createdAt ASC');
 
     const rawCourts = res.rows as unknown as Court[];
     const courts = rawCourts.map((c: any) => ({

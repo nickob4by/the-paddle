@@ -97,6 +97,11 @@ export interface SystemSettings {
   courtCloseTime: string; // e.g. "22:00"
   adminPin: string;
   updatedAt: string;
+  isBookingDisabled?: number;
+  closureReason?: string;
+  closureBannerText?: string;
+  closureStartDate?: string;
+  closureEndDate?: string;
 }
 
 export interface Product {

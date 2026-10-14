@@ -6,7 +6,7 @@ import CalendarSlotPicker from '@/components/CalendarSlotPicker';
 import BookingModal from '@/components/BookingModal';
 import LookupModal from '@/components/LookupModal';
 import { Court, Booking } from '@/lib/types';
-import { Sparkles, Shield, Clock, Award, ArrowDown, Users, Phone, MapPin, Zap } from 'lucide-react';
+import { Sparkles, Shield, Clock, Award, ArrowDown, Users, Phone, MapPin, Zap, AlertTriangle, Wrench } from 'lucide-react';
 
 export default function HomePage() {
   const [courts, setCourts] = useState<Court[]>([]);
@@ -28,6 +28,11 @@ export default function HomePage() {
   const [operatingHoursText, setOperatingHoursText] = useState<string>('');
   const [courtOpenTime, setCourtOpenTime] = useState<string>('');
   const [courtCloseTime, setCourtCloseTime] = useState<string>('');
+  const [isBookingDisabled, setIsBookingDisabled] = useState<boolean>(false);
+  const [closureBannerText, setClosureBannerText] = useState<string>('');
+  const [closureStartDate, setClosureStartDate] = useState<string>('');
+  const [closureEndDate, setClosureEndDate] = useState<string>('');
+  const [todayStr, setTodayStr] = useState<string>('');
 
   // Fetch active courts and facility settings
   const fetchCourts = async () => {
@@ -37,17 +42,35 @@ export default function HomePage() {
       const data = await res.json();
       if (data.success && data.courts) {
         setCourts(data.courts);
-        if (data.courts.length > 0 && !selectedCourt) {
-          setSelectedCourt(data.courts[0]);
+        if (data.courts.length > 0) {
+          // Select first active court if possible, otherwise first court
+          const activeCourt = data.courts.find((c: Court) => c.isActive === 1) || data.courts[0];
+          setSelectedCourt((prev) => {
+            if (!prev) return activeCourt;
+            return data.courts.find((c: Court) => c.id === prev.id) || activeCourt;
+          });
         }
       }
 
       const settingsRes = await fetch('/api/settings', { cache: 'no-store' });
       const settingsData = await settingsRes.json();
       if (settingsData.success && settingsData.settings) {
-        const { courtOpenTime: open = '06:00', courtCloseTime: close = '22:00' } = settingsData.settings;
+        const {
+          courtOpenTime: open = '06:00',
+          courtCloseTime: close = '22:00',
+          isBookingDisabled: disabled = 0,
+          closureBannerText: banner = '',
+          closureStartDate: start = '',
+          closureEndDate: end = ''
+        } = settingsData.settings;
+
         setCourtOpenTime(open);
         setCourtCloseTime(close);
+        setIsBookingDisabled(Number(disabled) === 1);
+        setClosureBannerText(banner);
+        setClosureStartDate(start);
+        setClosureEndDate(end);
+
         const formatBadgeTime = (t: string) => {
           const h = parseInt(t.split(':')[0], 10);
           if (h === 24 || h === 0) return '12:00 AM';
@@ -65,6 +88,11 @@ export default function HomePage() {
   };
 
   useEffect(() => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    setTodayStr(`${y}-${m}-${d}`);
     fetchCourts();
   }, []);
 
@@ -80,10 +108,44 @@ export default function HomePage() {
     setIsBookingOpen(true);
   };
 
+  // Notice Banner computations
+  const inactiveCourts = courts.filter((c) => c.isActive === 0);
+  const activeCourts = courts.filter((c) => c.isActive === 1);
+
+  const isScheduledClosedToday = Boolean(
+    todayStr && (
+      (closureStartDate && closureEndDate && todayStr >= closureStartDate && todayStr <= closureEndDate) ||
+      (closureStartDate && !closureEndDate && todayStr === closureStartDate)
+    )
+  );
+
+  const isFacilityClosed = isBookingDisabled || isScheduledClosedToday;
+
+  let noticeBannerText = '';
+  if (isFacilityClosed) {
+    noticeBannerText = closureBannerText || 'Notice: The facility is temporarily closed for vacation or maintenance. Online bookings will resume shortly!';
+  } else if (closureStartDate && closureEndDate && todayStr < closureStartDate) {
+    noticeBannerText = `Upcoming Notice: The facility will be closed from ${closureStartDate} to ${closureEndDate}${closureBannerText ? ` (${closureBannerText})` : ''}. Advance bookings outside these dates remain available.`;
+  } else if (inactiveCourts.length > 0 && activeCourts.length > 0) {
+    noticeBannerText = `Court Notice: ${inactiveCourts.map((c) => c.name).join(', ')} is currently closed for maintenance. ${activeCourts.map((c) => c.name).join(', ')} is available and accepting bookings!`;
+  } else if (courts.length > 0 && activeCourts.length === 0) {
+    noticeBannerText = 'Notice: All courts are currently undergoing maintenance. Please check back shortly.';
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col selection:bg-lime-500 selection:text-slate-950 transition-colors duration-200">
       {/* Header */}
       <Navbar onOpenLookup={() => setIsLookupOpen(true)} />
+
+      {/* Announcement Notice Banner */}
+      {noticeBannerText && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border-b border-amber-500/30 py-2.5 sm:py-3 px-4 sm:px-6">
+          <div className="max-w-7xl mx-auto flex items-center justify-center gap-2.5 text-center text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-200">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
+            <span>{noticeBannerText}</span>
+          </div>
+        </div>
+      )}
 
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-8 pb-14 sm:pt-16 sm:pb-24 md:pt-20 md:pb-28 border-b border-slate-200 dark:border-slate-900">
@@ -225,6 +287,10 @@ export default function HomePage() {
                 selectedCourt={selectedCourt}
                 initialOpenTime={courtOpenTime || undefined}
                 initialCloseTime={courtCloseTime || undefined}
+                isBookingDisabled={isBookingDisabled}
+                closureBannerText={closureBannerText}
+                closureStartDate={closureStartDate}
+                closureEndDate={closureEndDate}
                 onSelectCourt={(c) => setSelectedCourt(c)}
                 onProceedToBooking={handleProceedToBooking}
               />

@@ -119,12 +119,41 @@ export async function POST(request: Request) {
       }
     }
 
+    // Check if facility-wide booking is disabled or in scheduled vacation/closure
+    const settingsRes = await db.execute({
+      sql: 'SELECT isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate FROM settings WHERE id = ?',
+      args: ['default']
+    });
+    if (settingsRes.rows.length > 0) {
+      const s = settingsRes.rows[0] as any;
+      const isGloballyDisabled = Number(s.isBookingDisabled) === 1;
+      const isDateClosed = Boolean(
+        (s.closureStartDate && s.closureEndDate && bookingDate >= s.closureStartDate && bookingDate <= s.closureEndDate) ||
+        (s.closureStartDate && !s.closureEndDate && bookingDate === s.closureStartDate)
+      );
+
+      if (isGloballyDisabled || isDateClosed) {
+        const notice = s.closureBannerText || s.closureReason || 'The facility is temporarily closed for vacation or maintenance.';
+        return NextResponse.json(
+          { success: false, error: `Bookings are currently unavailable: ${notice}` },
+          { status: 400 }
+        );
+      }
+    }
+
     // Verify Court exists and is active
     const courtRes = await db.execute({ sql: 'SELECT * FROM courts WHERE id = ?', args: [courtId] });
     if (courtRes.rows.length === 0) {
       return NextResponse.json({ success: false, error: 'Selected court does not exist.' }, { status: 404 });
     }
     const court = courtRes.rows[0] as unknown as Court;
+
+    if (court.isActive === 0) {
+      return NextResponse.json(
+        { success: false, error: `${court.name} is currently undergoing maintenance and is not accepting bookings.` },
+        { status: 400 }
+      );
+    }
 
     // Calculate discrete hour slots and total amount based on time-range pricing
     const startHourInt = parseInt(startTime.split(':')[0], 10);
