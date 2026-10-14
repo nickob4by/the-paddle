@@ -26,7 +26,6 @@ export default function HomePage() {
     totalAmount: number;
   } | null>(null);
 
-  const [operatingHoursText, setOperatingHoursText] = useState<string>('');
   const [courtOpenTime, setCourtOpenTime] = useState<string>('');
   const [courtCloseTime, setCourtCloseTime] = useState<string>('');
   const [isBookingDisabled, setIsBookingDisabled] = useState<boolean>(false);
@@ -77,15 +76,6 @@ export default function HomePage() {
         setClosureEndDate(end);
         setClosureStartTime(startTimeVal || '');
         setClosureEndTime(endTimeVal || '');
-
-        const formatBadgeTime = (t: string) => {
-          const h = parseInt(t.split(':')[0], 10);
-          if (h === 24 || h === 0) return '12:00 AM';
-          const ampm = h >= 12 ? 'PM' : 'AM';
-          const dh = h % 12 === 0 ? 12 : h % 12;
-          return `${dh}:00 ${ampm}`;
-        };
-        setOperatingHoursText(`Open Daily • ${formatBadgeTime(open)} – ${formatBadgeTime(close)}`);
       }
     } catch (err) {
       console.error('Error fetching courts/settings:', err);
@@ -147,7 +137,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col selection:bg-lime-500 selection:text-slate-950 transition-colors duration-200">
       {/* Header */}
-      <Navbar onOpenLookup={() => setIsLookupOpen(true)} operatingHoursText={operatingHoursText} />
+      <Navbar onOpenLookup={() => setIsLookupOpen(true)} />
 
       {/* Announcement Notice Banner */}
       {noticeBannerText && (
