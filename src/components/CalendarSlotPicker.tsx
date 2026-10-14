@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   Sparkles,
   Check,
-  Moon
+  Moon,
+  Sun
 } from 'lucide-react';
 
 interface CalendarSlotPickerProps {
@@ -491,7 +492,7 @@ export default function CalendarSlotPicker({
 
         {/* Responsive grid: 2 cols on mobile, 3 on sm, 4 on md+ */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
-          {timeSlots.map((slot) => {
+          {timeSlots.map((slot, idx) => {
             const booked = isSlotBooked(slot);
             const inPast = isSlotInPast(slot);
             const isSelected = selectedSlots.includes(slot);
@@ -499,79 +500,133 @@ export default function CalendarSlotPicker({
             const slotEndStr = slotIndex + 1 < timeSlots.length ? timeSlots[slotIndex + 1] : closeTime;
             const slotRate = getSlotRate(selectedCourt, slot);
             const slotRule = getSlotPricingRule(selectedCourt, slot);
+            const hasPricingRules = parsePricingRules(selectedCourt?.pricingRules).length > 0;
+
+            const prevSlot = idx > 0 ? timeSlots[idx - 1] : null;
+            const prevRule = prevSlot ? getSlotPricingRule(selectedCourt, prevSlot) : null;
+            const isRuleStart = slotRule && (!prevRule || prevRule.id !== slotRule.id);
+            const isReturnToBase = !slotRule && prevRule && hasPricingRules;
 
             const isDisabled = booked || inPast;
 
             return (
-              <button
-                key={slot}
-                disabled={isDisabled}
-                onClick={() => handleSlotToggle(slot)}
-                className={`relative group p-2.5 sm:p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between min-h-[66px] sm:min-h-[74px] ${
-                  isSelected
-                    ? 'bg-lime-500 border-lime-500 text-slate-950 font-bold shadow-md shadow-lime-500/20 scale-[1.02] cursor-pointer'
-                    : booked
-                    ? 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30 text-rose-400 dark:text-rose-300/40 cursor-not-allowed opacity-75'
-                    : inPast
-                    ? 'bg-slate-100/70 dark:bg-slate-950/40 border-slate-200/80 dark:border-slate-900/80 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60'
-                    : 'bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-lime-500/50 text-slate-800 dark:text-slate-200 cursor-pointer'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className={`text-xs sm:text-sm font-bold ${
-                    isSelected
-                      ? 'text-slate-950'
-                      : booked
-                      ? 'text-rose-500/70 dark:text-rose-400/50 line-through'
-                      : inPast
-                      ? 'text-slate-400 dark:text-slate-600'
-                      : 'text-slate-900 dark:text-white'
-                  }`}>
-                    {formatTime(slot)}
-                  </span>
-                  {isSelected && <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 stroke-[2.5]" />}
-                  {booked && (
-                    <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
-                      Booked
+              <React.Fragment key={slot}>
+                {/* Daytime Header (if court has evening rules configured) */}
+                {idx === 0 && hasPricingRules && !slotRule && (
+                  <div className="col-span-full mb-1 flex items-center justify-between pb-1.5 border-b border-slate-200/80 dark:border-slate-800/80">
+                    <div className="flex items-center gap-1.5">
+                      <Sun className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                        Standard Daytime Hours
+                      </span>
+                    </div>
+                    <span className="text-[11px] sm:text-xs font-bold text-slate-500 dark:text-slate-400">
+                      ₱{selectedCourt?.hourlyRate}/hr
                     </span>
-                  )}
-                  {inPast && !booked && (
-                    <span className="text-[9px] sm:text-[10px] font-semibold tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-900/60 text-slate-400 dark:text-slate-500 border border-slate-300/60 dark:border-slate-800/60">
-                      Passed
-                    </span>
-                  )}
-                </div>
+                  </div>
+                )}
 
-                <div className="flex items-center justify-between w-full mt-1.5">
-                  <span className={`text-[10px] sm:text-[11px] ${
-                    isSelected
-                      ? 'text-slate-900 font-semibold'
-                      : inPast
-                      ? 'text-slate-400 dark:text-slate-600'
-                      : 'text-slate-500 dark:text-slate-400'
-                  }`}>
-                    until {formatTime(slotEndStr)}
-                  </span>
-                  {!booked && !inPast && (
-                    <div className="flex items-center gap-1">
-                      {slotRule && (
-                        <span className={`text-[9px] px-1 py-0.5 rounded font-semibold ${
-                          isSelected
-                            ? 'bg-slate-950/15 text-slate-950'
-                            : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300'
-                        }`}>
-                          {slotRule.label || 'Evening'}
+                {/* Evening Rates Separator */}
+                {isRuleStart && (
+                  <div className="col-span-full my-2.5 pt-3 sm:pt-4 pb-1.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center flex-shrink-0">
+                        <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-2">
+                        <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                          {slotRule?.label || 'Evening Rates'}
                         </span>
-                      )}
+                        <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
+                          (From {formatTime(slot)} onwards)
+                        </span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-black border border-indigo-200/50 dark:border-indigo-800/50">
+                      ₱{slotRate}/hr
+                    </span>
+                  </div>
+                )}
+
+                {/* Daytime Return Separator (if returning from overnight to base) */}
+                {isReturnToBase && (
+                  <div className="col-span-full my-2.5 pt-3 sm:pt-4 pb-1.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-lime-500/15 text-lime-600 dark:text-lime-400 flex items-center justify-center flex-shrink-0">
+                        <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      </div>
+                      <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
+                        Standard Base Hours (From {formatTime(slot)})
+                      </span>
+                    </div>
+                    <span className="text-xs font-black text-lime-600 dark:text-lime-400">
+                      ₱{selectedCourt?.hourlyRate}/hr
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  disabled={isDisabled}
+                  onClick={() => handleSlotToggle(slot)}
+                  className={`relative group p-2.5 sm:p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between min-h-[66px] sm:min-h-[74px] ${
+                    isSelected
+                      ? 'bg-lime-500 border-lime-500 text-slate-950 font-bold shadow-md shadow-lime-500/20 scale-[1.02] cursor-pointer'
+                      : booked
+                      ? 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30 text-rose-400 dark:text-rose-300/40 cursor-not-allowed opacity-75'
+                      : inPast
+                      ? 'bg-slate-100/70 dark:bg-slate-950/40 border-slate-200/80 dark:border-slate-900/80 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60'
+                      : 'bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-lime-500/50 text-slate-800 dark:text-slate-200 cursor-pointer'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className={`text-xs sm:text-sm font-bold ${
+                      isSelected
+                        ? 'text-slate-950'
+                        : booked
+                        ? 'text-rose-500/70 dark:text-rose-400/50 line-through'
+                        : inPast
+                        ? 'text-slate-400 dark:text-slate-600'
+                        : 'text-slate-900 dark:text-white'
+                    }`}>
+                      {formatTime(slot)}
+                    </span>
+                    {isSelected && <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 stroke-[2.5]" />}
+                    {booked && (
+                      <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
+                        Booked
+                      </span>
+                    )}
+                    {inPast && !booked && (
+                      <span className="text-[9px] sm:text-[10px] font-semibold tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-900/60 text-slate-400 dark:text-slate-500 border border-slate-300/60 dark:border-slate-800/60">
+                        Passed
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between w-full mt-1.5">
+                    <span className={`text-[10px] sm:text-[11px] ${
+                      isSelected
+                        ? 'text-slate-900 font-semibold'
+                        : inPast
+                        ? 'text-slate-400 dark:text-slate-600'
+                        : 'text-slate-500 dark:text-slate-400'
+                    }`}>
+                      until {formatTime(slotEndStr)}
+                    </span>
+                    {!booked && !inPast && (
                       <span className={`text-[11px] sm:text-xs font-black ${
-                        isSelected ? 'text-slate-950' : 'text-lime-600 dark:text-lime-400'
+                        isSelected
+                          ? 'text-slate-950'
+                          : slotRule
+                          ? 'text-indigo-600 dark:text-indigo-400'
+                          : 'text-lime-600 dark:text-lime-400'
                       }`}>
                         ₱{slotRate}
                       </span>
-                    </div>
-                  )}
-                </div>
-              </button>
+                    )}
+                  </div>
+                </button>
+              </React.Fragment>
             );
           })}
         </div>
