@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Calendar, Search, ShieldCheck, Sun, Moon } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
+import { siteConfig } from '@/lib/config';
 
 interface NavbarProps {
   onOpenLookup: () => void;
@@ -21,15 +22,15 @@ export default function Navbar({ onOpenLookup }: NavbarProps) {
             {/* Light mode logo */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/the-paddle-logo-light.png"
-              alt="The Paddle - Recreational Hub"
+              src={siteConfig.logoLight}
+              alt={siteConfig.brandName}
               className="h-10 sm:h-12 w-auto object-contain dark:hidden"
             />
             {/* Dark mode logo */}
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/the-paddle-logo-dark.png"
-              alt="The Paddle - Recreational Hub"
+              src={siteConfig.logoDark}
+              alt={siteConfig.brandName}
               className="h-10 sm:h-12 w-auto object-contain hidden dark:block"
             />
           </div>

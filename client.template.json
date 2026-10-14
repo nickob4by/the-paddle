@@ -1,0 +1,49 @@
+{
+  "brandName": "Smash Point Pickleball Club",
+  "brandTagline": "Premier Indoor Pickleball & Recreational Facility",
+  "contactPhone": "0917-123-4567",
+  "tursoDatabaseUrl": "libsql://smash-point-yourdb.turso.io",
+  "tursoAuthToken": "your-turso-auth-token-here",
+  "courtOpenTime": "06:00",
+  "courtCloseTime": "23:00",
+  "adminPin": "admin123",
+  "gcashAccountName": "Smash Point Pickleball Club",
+  "gcashNumber": "0917-123-4567",
+  "gcashQrUrl": "",
+  "logoLight": "/the-paddle-logo-light.png",
+  "logoDark": "/the-paddle-logo-dark.png",
+  "courts": [
+    {
+      "id": "court-1",
+      "name": "Court 1 (Championship)",
+      "description": "Pro-cushioned tournament court with LED lighting",
+      "surfaceType": "Pro Cushion Acrylic",
+      "hourlyRate": 350,
+      "pricingRules": [
+        {
+          "id": "rule-evening-1",
+          "label": "Evening Rate",
+          "startTime": "17:00",
+          "endTime": "23:00",
+          "rate": 500
+        }
+      ]
+    },
+    {
+      "id": "court-2",
+      "name": "Court 2 (Standard)",
+      "description": "Tournament-grade indoor pickleball court",
+      "surfaceType": "Pro Cushion Acrylic",
+      "hourlyRate": 350,
+      "pricingRules": [
+        {
+          "id": "rule-evening-2",
+          "label": "Evening Rate",
+          "startTime": "17:00",
+          "endTime": "23:00",
+          "rate": 500
+        }
+      ]
+    }
+  ]
+}

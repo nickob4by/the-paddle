@@ -6,6 +6,7 @@ import CalendarSlotPicker from '@/components/CalendarSlotPicker';
 import BookingModal from '@/components/BookingModal';
 import LookupModal from '@/components/LookupModal';
 import { Court, Booking } from '@/lib/types';
+import { siteConfig } from '@/lib/config';
 import { Sparkles, Shield, Clock, Award, ArrowDown, Users, Phone, MapPin, Zap, AlertTriangle, Wrench } from 'lucide-react';
 
 export default function HomePage() {
@@ -179,14 +180,14 @@ export default function HomePage() {
             <div className="relative h-24 sm:h-32 md:h-40 lg:h-48 w-auto flex items-center justify-center transition-transform duration-300 hover:scale-105">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/the-paddle-logo-light.png"
-                alt="The Paddle - Recreational Hub"
+                src={siteConfig.logoLight}
+                alt={siteConfig.brandName}
                 className="h-24 sm:h-32 md:h-40 lg:h-48 w-auto object-contain dark:hidden drop-shadow-md"
               />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/the-paddle-logo-dark.png"
-                alt="The Paddle - Recreational Hub"
+                src={siteConfig.logoDark}
+                alt={siteConfig.brandName}
                 className="h-24 sm:h-32 md:h-40 lg:h-48 w-auto object-contain hidden dark:block drop-shadow-[0_12px_35px_rgba(163,230,53,0.2)]"
               />
             </div>
@@ -316,7 +317,7 @@ export default function HomePage() {
       <footer className="mt-auto py-8 sm:py-10 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-900 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
           <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-            <span className="font-bold text-slate-700 dark:text-slate-300">The Paddle Pickleball Club</span>
+            <span className="font-bold text-slate-700 dark:text-slate-300">{siteConfig.brandName}</span>
             <span>•</span>
             <span>All rights reserved © 2026</span>
           </div>

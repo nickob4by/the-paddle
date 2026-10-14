@@ -6,7 +6,8 @@
     "dev": "next dev -H 0.0.0.0",
     "build": "next build",
     "start": "next start -H 0.0.0.0 -p ${PORT:-3000}",
-    "lint": "eslint"
+    "lint": "eslint",
+    "setup:client": "node scripts/setup-client.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

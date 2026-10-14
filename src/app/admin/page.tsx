@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Court, Booking, SystemSettings, Product, PosOrder, PricingRule, parsePricingRules } from '@/lib/types';
+import { siteConfig } from '@/lib/config';
 
 const HOUR_OPTIONS = [
   { value: '06:00', label: '6:00 AM' },
@@ -1152,14 +1153,14 @@ export default function AdminPage() {
             <div className="relative h-10 w-auto flex items-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/the-paddle-logo-light.png"
-                alt="The Paddle"
+                src={siteConfig.logoLight}
+                alt={siteConfig.brandName}
                 className="h-10 w-auto object-contain dark:hidden"
               />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/the-paddle-logo-dark.png"
-                alt="The Paddle"
+                src={siteConfig.logoDark}
+                alt={siteConfig.brandName}
                 className="h-10 w-auto object-contain hidden dark:block"
               />
             </div>
@@ -1176,7 +1177,7 @@ export default function AdminPage() {
 
           <h2 className="text-2xl font-black text-slate-950 dark:text-white">Admin Portal</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            The Paddle Management Dashboard
+            {siteConfig.brandName} Management Dashboard
           </p>
 
           <form onSubmit={handleLogin} className="mt-6 space-y-4">
@@ -1232,14 +1233,14 @@ export default function AdminPage() {
               <div className="relative h-8 sm:h-9 w-auto flex items-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src="/the-paddle-logo-light.png"
-                  alt="The Paddle"
+                  src={siteConfig.logoLight}
+                  alt={siteConfig.brandName}
                   className="h-8 sm:h-9 w-auto object-contain dark:hidden"
                 />
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src="/the-paddle-logo-dark.png"
-                  alt="The Paddle"
+                  src={siteConfig.logoDark}
+                  alt={siteConfig.brandName}
                   className="h-8 sm:h-9 w-auto object-contain hidden dark:block"
                 />
               </div>

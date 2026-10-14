@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/context/ThemeContext";
+import { siteConfig } from "@/lib/config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "The Paddle | Pickleball Court Booking",
-  description: "Reserve tournament-grade pickleball courts with instant scheduling, GCash QR payments, and live calendar availability.",
+  title: `${siteConfig.brandName} | Court Booking & Reservation`,
+  description: `Reserve tournament-grade courts at ${siteConfig.brandName} with instant scheduling, GCash QR payments, and live calendar availability.`,
 };
 
 export default function RootLayout({

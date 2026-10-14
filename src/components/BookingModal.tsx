@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Court, Booking, SystemSettings } from '@/lib/types';
+import { siteConfig } from '@/lib/config';
 import {
   X,
   CreditCard,
@@ -51,8 +52,8 @@ export default function BookingModal({
 
   // Settings for GCash
   const [settings, setSettings] = useState<Partial<SystemSettings>>({
-    gcashAccountName: 'The Paddle Pickleball Club',
-    gcashNumber: '0917-888-7235',
+    gcashAccountName: siteConfig.brandName,
+    gcashNumber: siteConfig.contactPhone,
     gcashQrUrl: ''
   });
 
@@ -213,7 +214,7 @@ export default function BookingModal({
               {confirmedBooking ? 'Reservation Confirmed!' : 'Complete Your Reservation'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[220px] sm:max-w-none">
-              The Paddle • {bookingDetails.court.name}
+              {siteConfig.brandName} • {bookingDetails.court.name}
             </p>
           </div>
           <button
@@ -417,7 +418,7 @@ export default function BookingModal({
                       <div className="space-y-2 w-full text-xs text-center sm:text-left">
                         <div>
                           <span className="text-slate-500 dark:text-slate-400 block text-[11px]">GCash Account Name</span>
-                          <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">{settings.gcashAccountName || 'The Paddle Club'}</span>
+                          <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">{settings.gcashAccountName || siteConfig.brandName}</span>
                         </div>
 
                         <div>

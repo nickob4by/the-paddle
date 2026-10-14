@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Booking } from '@/lib/types';
+import { siteConfig } from '@/lib/config';
 import { CheckCircle2, Copy, Check, Printer, Calendar, Clock, MapPin, User, Phone, CreditCard, XCircle } from 'lucide-react';
 
 interface BookingTicketProps {
@@ -74,14 +75,14 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
           <div className="relative h-8 sm:h-9 w-auto flex items-center">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/the-paddle-logo-light.png"
-              alt="The Paddle"
+              src={siteConfig.logoLight}
+              alt={siteConfig.brandName}
               className="h-8 sm:h-9 w-auto object-contain dark:hidden"
             />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/the-paddle-logo-dark.png"
-              alt="The Paddle"
+              src={siteConfig.logoDark}
+              alt={siteConfig.brandName}
               className="h-8 sm:h-9 w-auto object-contain hidden dark:block"
             />
           </div>
@@ -191,7 +192,7 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
         {/* Footer tip */}
         <div className="pt-3 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
           <span>Present this reference upon arrival</span>
-          <span className="font-semibold text-lime-600 dark:text-lime-400">The Paddle Club</span>
+          <span className="font-semibold text-lime-600 dark:text-lime-400">{siteConfig.brandName}</span>
         </div>
       </div>
 
