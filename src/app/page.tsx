@@ -147,7 +147,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col selection:bg-lime-500 selection:text-slate-950 transition-colors duration-200">
       {/* Header */}
-      <Navbar onOpenLookup={() => setIsLookupOpen(true)} />
+      <Navbar onOpenLookup={() => setIsLookupOpen(true)} operatingHoursText={operatingHoursText} />
 
       {/* Announcement Notice Banner */}
       {noticeBannerText && (
@@ -160,35 +160,25 @@ export default function HomePage() {
       )}
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden pt-8 pb-14 sm:pt-16 sm:pb-24 md:pt-20 md:pb-28 border-b border-slate-200 dark:border-slate-900">
+      <section className="relative overflow-hidden pt-6 pb-12 sm:pt-12 sm:pb-20 md:pt-16 md:pb-24 border-b border-slate-200 dark:border-slate-900">
         {/* Glow ambient backgrounds */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[320px] sm:w-[600px] h-[200px] sm:h-[300px] bg-gradient-to-tr from-lime-500/15 to-emerald-500/15 blur-[90px] sm:blur-[120px] pointer-events-none rounded-full" />
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-[340px] sm:w-[680px] h-[220px] sm:h-[350px] bg-gradient-to-tr from-lime-500/20 via-emerald-500/15 to-teal-500/15 blur-[100px] sm:blur-[140px] pointer-events-none rounded-full" />
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          {/* Badge */}
-          {operatingHoursText ? (
-            <div className="inline-flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] sm:text-xs font-semibold text-lime-600 dark:text-lime-400 mb-5 sm:mb-6 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-lime-500 animate-ping" />
-              <span>{operatingHoursText}</span>
-            </div>
-          ) : (
-            <div className="h-8 mb-5 sm:mb-6" />
-          )}
-
-          {/* Official Emblem Logo */}
+          {/* Official Emblem Logo - Enlarged and Centerpiece */}
           <div className="flex justify-center mb-6 sm:mb-8">
-            <div className="relative h-24 sm:h-32 md:h-40 lg:h-48 w-auto flex items-center justify-center transition-transform duration-300 hover:scale-105">
+            <div className="relative h-36 sm:h-52 md:h-64 lg:h-76 w-auto flex items-center justify-center transition-all duration-300 hover:scale-105">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={siteConfig.logoLight}
                 alt={siteConfig.brandName}
-                className="h-24 sm:h-32 md:h-40 lg:h-48 w-auto object-contain dark:hidden drop-shadow-md"
+                className="h-36 sm:h-52 md:h-64 lg:h-76 w-auto object-contain dark:hidden drop-shadow-lg"
               />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={siteConfig.logoDark}
                 alt={siteConfig.brandName}
-                className="h-24 sm:h-32 md:h-40 lg:h-48 w-auto object-contain hidden dark:block drop-shadow-[0_12px_35px_rgba(163,230,53,0.2)]"
+                className="h-36 sm:h-52 md:h-64 lg:h-76 w-auto object-contain hidden dark:block drop-shadow-[0_16px_45px_rgba(163,230,53,0.28)]"
               />
             </div>
           </div>
@@ -197,7 +187,7 @@ export default function HomePage() {
           <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight text-slate-950 dark:text-white max-w-4xl mx-auto leading-[1.12] sm:leading-[1.08]">
             PLAY LIKE A PRO AT <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-lime-500 via-emerald-500 to-teal-500 dark:from-lime-400 dark:via-emerald-300 dark:to-teal-400">
-              THE PADDLE
+              {siteConfig.brandName.toUpperCase()}
             </span>
           </h1>
 

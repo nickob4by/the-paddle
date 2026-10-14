@@ -8,14 +8,26 @@ import { siteConfig } from '@/lib/config';
 
 interface NavbarProps {
   onOpenLookup: () => void;
+  operatingHoursText?: string;
 }
 
-export default function Navbar({ onOpenLookup }: NavbarProps) {
+export default function Navbar({ onOpenLookup, operatingHoursText }: NavbarProps) {
   const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white transition-colors duration-200">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-2">
+      {/* Mobile micro-bar for Operating Hours */}
+      {operatingHoursText && (
+        <div className="sm:hidden bg-lime-500/10 dark:bg-lime-950/40 border-b border-lime-500/15 py-1 px-3 text-center flex items-center justify-center gap-1.5 text-[10px] font-bold text-lime-700 dark:text-lime-400">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-lime-500"></span>
+          </span>
+          <span>{operatingHoursText}</span>
+        </div>
+      )}
+
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between gap-3">
         {/* Brand */}
         <Link href="/" className="flex items-center gap-2 group flex-shrink min-w-0">
           <div className="relative h-11 sm:h-13 w-auto flex items-center group-hover:scale-105 transition-transform">
@@ -35,6 +47,17 @@ export default function Navbar({ onOpenLookup }: NavbarProps) {
             />
           </div>
         </Link>
+
+        {/* Operating Hours Pill in Header (Tablet & Desktop) */}
+        {operatingHoursText && (
+          <div className="hidden sm:inline-flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-full bg-slate-100/90 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/70 text-xs font-semibold text-lime-600 dark:text-lime-400 shadow-xs">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lime-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-lime-500"></span>
+            </span>
+            <span>{operatingHoursText}</span>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
