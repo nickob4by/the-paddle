@@ -5,7 +5,7 @@ import Navbar from '@/components/Navbar';
 import CalendarSlotPicker from '@/components/CalendarSlotPicker';
 import BookingModal from '@/components/BookingModal';
 import LookupModal from '@/components/LookupModal';
-import { Court, Booking } from '@/lib/types';
+import { Court, Booking, computeNoticeBannerText } from '@/lib/types';
 import { siteConfig } from '@/lib/config';
 import { Sparkles, Shield, Clock, Award, ArrowDown, Users, Phone, MapPin, Zap, AlertTriangle, Wrench } from 'lucide-react';
 
@@ -105,34 +105,21 @@ export default function HomePage() {
     setIsBookingOpen(true);
   };
 
-  // Notice Banner computations
+  // Notice Banner computation
   const inactiveCourts = courts.filter((c) => c.isActive === 0);
   const activeCourts = courts.filter((c) => c.isActive === 1);
 
-  const isScheduledClosedToday = Boolean(
-    todayStr && (
-      (closureStartDate && closureEndDate && todayStr >= closureStartDate && todayStr <= closureEndDate) ||
-      (closureStartDate && !closureEndDate && todayStr === closureStartDate)
-    )
-  );
-
-  const hasPartialTimeWindow = Boolean(closureStartTime && closureEndTime && closureStartTime !== closureEndTime);
-  const isFacilityClosed = isBookingDisabled || isScheduledClosedToday;
-
-  let noticeBannerText = '';
-  if (isFacilityClosed) {
-    if (hasPartialTimeWindow) {
-      noticeBannerText = closureBannerText || `Notice: Morning hours from ${closureStartTime} to ${closureEndTime} are closed for reservations today. Remaining hours are open!`;
-    } else {
-      noticeBannerText = closureBannerText || 'Notice: The facility is temporarily closed for vacation or maintenance. Online bookings will resume shortly!';
-    }
-  } else if (closureStartDate && closureEndDate && todayStr < closureStartDate) {
-    noticeBannerText = `Upcoming Notice: The facility will be closed ${hasPartialTimeWindow ? `(${closureStartTime} to ${closureEndTime}) ` : ''}from ${closureStartDate} to ${closureEndDate}${closureBannerText ? ` (${closureBannerText})` : ''}. Advance bookings outside these dates remain available.`;
-  } else if (inactiveCourts.length > 0 && activeCourts.length > 0) {
-    noticeBannerText = `Court Notice: ${inactiveCourts.map((c) => c.name).join(', ')} is currently closed for maintenance. ${activeCourts.map((c) => c.name).join(', ')} is available and accepting bookings!`;
-  } else if (courts.length > 0 && activeCourts.length === 0) {
-    noticeBannerText = 'Notice: All courts are currently undergoing maintenance. Please check back shortly.';
-  }
+  const noticeBannerText = computeNoticeBannerText({
+    isBookingDisabled,
+    closureBannerText,
+    closureStartDate,
+    closureEndDate,
+    closureStartTime,
+    closureEndTime,
+    todayStr,
+    inactiveCourtNames: inactiveCourts.map((c) => c.name),
+    activeCourtCount: activeCourts.length,
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col selection:bg-lime-500 selection:text-slate-950 transition-colors duration-200">

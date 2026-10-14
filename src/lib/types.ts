@@ -164,3 +164,68 @@ export interface PosOrder {
   items?: PosOrderItem[];
 }
 
+export interface NoticeBannerParams {
+  isBookingDisabled: boolean;
+  closureBannerText?: string;
+  closureStartDate?: string;
+  closureEndDate?: string;
+  closureStartTime?: string;
+  closureEndTime?: string;
+  todayStr?: string;
+  inactiveCourtNames?: string[];
+  activeCourtCount?: number;
+}
+
+export function computeNoticeBannerText({
+  isBookingDisabled,
+  closureBannerText = '',
+  closureStartDate = '',
+  closureEndDate = '',
+  closureStartTime = '',
+  closureEndTime = '',
+  todayStr = '',
+  inactiveCourtNames = [],
+  activeCourtCount = 0
+}: NoticeBannerParams): string {
+  const customBanner = (closureBannerText || '').trim();
+  const hasPartialTimeWindow = Boolean(closureStartTime && closureEndTime && closureStartTime !== closureEndTime);
+  
+  const isScheduledClosedToday = Boolean(
+    todayStr && (
+      (closureStartDate && closureEndDate && todayStr >= closureStartDate && todayStr <= closureEndDate) ||
+      (closureStartDate && !closureEndDate && todayStr === closureStartDate)
+    )
+  );
+
+  const isFacilityClosed = isBookingDisabled || isScheduledClosedToday;
+
+  if (isFacilityClosed) {
+    if (customBanner) return customBanner;
+    if (hasPartialTimeWindow) {
+      return `Notice: Closed from ${closureStartTime} to ${closureEndTime} for reservations today. Remaining hours are open for booking!`;
+    }
+    return 'Notice: The facility is temporarily closed for vacation or maintenance. Online bookings will resume shortly!';
+  }
+
+  if (closureStartDate && closureEndDate && todayStr && todayStr < closureStartDate) {
+    if (customBanner) return `Upcoming Notice: ${customBanner}`;
+    return `Upcoming Notice: The facility will be closed ${hasPartialTimeWindow ? `(${closureStartTime} to ${closureEndTime}) ` : ''}from ${closureStartDate} to ${closureEndDate}. Advance bookings outside these dates remain available.`;
+  }
+
+  // If admin provided custom banner text, always display it
+  if (customBanner) {
+    return customBanner;
+  }
+
+  // If a time window closure is configured without specific dates, it's a daily time window
+  if (hasPartialTimeWindow) {
+    return `Notice: Closed from ${closureStartTime} to ${closureEndTime}. Remaining hours are open for booking!`;
+  }
+
+  if (inactiveCourtNames.length > 0 && activeCourtCount > 0) {
+    return `Court Notice: ${inactiveCourtNames.join(', ')} is currently closed for maintenance. Remaining courts are available and accepting bookings!`;
+  }
+
+  return '';
+}
+

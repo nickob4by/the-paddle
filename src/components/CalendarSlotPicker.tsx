@@ -594,7 +594,7 @@ export default function CalendarSlotPicker({
               <div className="mt-5 p-3 sm:p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-950 dark:text-amber-200 font-medium animate-in fade-in">
                 <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
                 <span>
-                  {closureBannerText || `Notice: Morning hours from ${closureStartTime} to ${closureEndTime} are closed for this date. Remaining hours are open for booking!`}
+                  {closureBannerText || `Notice: Closed from ${closureStartTime} to ${closureEndTime} for this date. Remaining hours are open for booking!`}
                 </span>
               </div>
             )}

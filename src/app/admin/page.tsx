@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Court, Booking, SystemSettings, Product, PosOrder, PricingRule, parsePricingRules } from '@/lib/types';
+import { Court, Booking, SystemSettings, Product, PosOrder, PricingRule, parsePricingRules, computeNoticeBannerText } from '@/lib/types';
 import { siteConfig } from '@/lib/config';
 
 const HOUR_OPTIONS = [
@@ -960,8 +960,19 @@ export default function AdminPage() {
   const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && b.bookingDate === todayStr).length : 0;
   const pendingPaymentCount = bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && (b.paymentStatus === 'VERIFICATION_PENDING' || b.paymentStatus === 'UNPAID')).length;
   const pendingProofsCount = bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && (b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl))).length;
-  
-  // --- DYNAMIC FINANCIAL ANALYTICS (Day / Week / Month / All) ---
+
+  // Live banner preview calculation using shared computeNoticeBannerText
+  const previewBannerText = computeNoticeBannerText({
+    isBookingDisabled: settingsIsBookingDisabled,
+    closureBannerText: settingsClosureBannerText,
+    closureStartDate: settingsClosureStartDate,
+    closureEndDate: settingsClosureEndDate,
+    closureStartTime: settingsClosureStartTime,
+    closureEndTime: settingsClosureEndTime,
+    todayStr,
+    inactiveCourtNames: courts.filter((c) => c.isActive === 0).map((c) => c.name),
+    activeCourtCount: courts.filter((c) => c.isActive === 1).length,
+  });
   const getFilterStartDate = () => {
     if (!currentDate) return '1970-01-01';
     const d = new Date(currentDate.getTime());
@@ -3155,27 +3166,20 @@ export default function AdminPage() {
                   />
                 </div>
 
-                {/* Banner Live Preview */}
-                {(settingsIsBookingDisabled || settingsClosureStartDate || settingsClosureBannerText || (settingsClosureStartTime && settingsClosureEndTime)) && (
-                  <div className="p-3 sm:p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 text-xs">
-                    <span className="font-bold flex items-center gap-1 text-[11px] uppercase tracking-wider text-amber-700 dark:text-amber-400 mb-1">
-                      <AlertTriangle className="w-3.5 h-3.5" />
-                      Client Banner Preview:
+                {/* Exact Client Banner Live Preview */}
+                {previewBannerText && (
+                  <div className="space-y-1.5 pt-1 animate-in fade-in">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+                      Client Banner Preview (Exact Homepage Appearance):
                     </span>
-                    <p className="font-medium text-xs text-amber-950 dark:text-amber-100">
-                      {settingsClosureBannerText || 'Notice: Online booking is temporarily unavailable due to scheduled vacation or maintenance.'}
-                    </p>
-                    <div className="flex flex-wrap gap-2 text-[11px] text-amber-700 dark:text-amber-400 mt-1">
-                      {settingsClosureStartDate && (
-                        <span>
-                          📅 Dates: {settingsClosureStartDate} {settingsClosureEndDate ? `to ${settingsClosureEndDate}` : ''}
-                        </span>
-                      )}
-                      {settingsClosureStartTime && settingsClosureEndTime && (
-                        <span>
-                          ⏰ Closed Hours: {settingsClosureStartTime} to {settingsClosureEndTime} (Other hours stay open)
-                        </span>
-                      )}
+                    <div className="rounded-xl overflow-hidden border border-amber-500/40 shadow-sm">
+                      <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 py-3 px-4 sm:px-6">
+                        <div className="flex items-center justify-center gap-2.5 text-center text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-200">
+                          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
+                          <span>{previewBannerText}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
