@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Court, Booking, getSlotRate, getSlotPricingRule, parsePricingRules } from '@/lib/types';
 import {
   Clock,
@@ -47,6 +47,25 @@ export default function CalendarSlotPicker({
   const [lastRefreshed, setLastRefreshed] = useState<string>('');
   const [openTime, setOpenTime] = useState<string>(initialOpenTime || '06:00');
   const [closeTime, setCloseTime] = useState<string>(initialCloseTime || '22:00');
+
+  const dateInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenDatePicker = (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+    }
+    if (dateInputRef.current) {
+      try {
+        if ('showPicker' in HTMLInputElement.prototype) {
+          dateInputRef.current.showPicker();
+          return;
+        }
+      } catch (err) {
+        // Fallback if showPicker throws
+      }
+      dateInputRef.current.focus();
+    }
+  };
 
   // Helper to get local date string YYYY-MM-DD
   const getTodayStr = () => {
@@ -429,22 +448,35 @@ export default function CalendarSlotPicker({
               <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
 
-            <div className="ml-1.5 sm:ml-2">
-              <span className="text-sm sm:text-lg font-black text-slate-950 dark:text-white block leading-tight">
+            <button
+              type="button"
+              onClick={handleOpenDatePicker}
+              className="ml-1.5 sm:ml-2 text-left cursor-pointer group"
+              title="Click to change date"
+            >
+              <span className="text-sm sm:text-lg font-black text-slate-950 dark:text-white block leading-tight group-hover:text-lime-600 dark:group-hover:text-lime-400 transition-colors">
                 {formattedDate}
               </span>
               <span className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
-                {isToday ? 'Today\'s Schedule' : 'Selected Schedule'}
+                {isToday ? "Today's Schedule" : 'Selected Schedule'}
               </span>
-            </div>
+            </button>
           </div>
 
           {/* Native Dropdown / Popover Calendar Button */}
-          <div className="relative w-full sm:w-auto">
-            <label className="flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 sm:py-2.5 rounded-xl bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 text-xs font-bold transition-all cursor-pointer shadow-sm">
-              <CalendarIcon className="w-4 h-4 text-lime-600 dark:text-lime-400" />
-              <span>Change Date</span>
+          <div className="relative flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto px-3.5 py-2 sm:py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-sm hover:border-lime-500/50 transition-all">
+              <button
+                type="button"
+                onClick={handleOpenDatePicker}
+                className="flex items-center gap-1.5 cursor-pointer text-slate-700 dark:text-slate-300 hover:text-lime-600 dark:hover:text-lime-400 transition-colors"
+                title="Click to open calendar"
+              >
+                <CalendarIcon className="w-4 h-4 text-lime-600 dark:text-lime-400 flex-shrink-0" />
+                <span className="whitespace-nowrap">Change Date:</span>
+              </button>
               <input
+                ref={dateInputRef}
                 type="date"
                 min={getTodayStr()}
                 value={selectedDate}
@@ -454,9 +486,14 @@ export default function CalendarSlotPicker({
                     setSelectedDate(e.target.value < today ? today : e.target.value);
                   }
                 }}
-                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                onClick={(e) => {
+                  try {
+                    (e.target as HTMLInputElement).showPicker?.();
+                  } catch {}
+                }}
+                className="bg-transparent text-slate-900 dark:text-white font-bold text-xs focus:outline-none cursor-pointer [color-scheme:light] dark:[color-scheme:dark] w-full sm:w-auto"
               />
-            </label>
+            </div>
           </div>
         </div>
       </div>
