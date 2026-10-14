@@ -5,7 +5,7 @@ import { SystemSettings } from '@/lib/types';
 export async function GET(request: Request) {
   try {
     const res = await db.execute({
-      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, updatedAt FROM settings WHERE id = ?',
+      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, closureStartTime, closureEndTime, updatedAt FROM settings WHERE id = ?',
       args: ['default']
     });
 
@@ -34,7 +34,9 @@ export async function PUT(request: Request) {
       closureReason,
       closureBannerText,
       closureStartDate,
-      closureEndDate
+      closureEndDate,
+      closureStartTime,
+      closureEndTime
     } = body;
 
     const currentRes = await db.execute({ sql: 'SELECT * FROM settings WHERE id = ?', args: ['default'] });
@@ -57,6 +59,8 @@ export async function PUT(request: Request) {
                 closureBannerText = COALESCE(?, closureBannerText),
                 closureStartDate = COALESCE(?, closureStartDate),
                 closureEndDate = COALESCE(?, closureEndDate),
+                closureStartTime = COALESCE(?, closureStartTime),
+                closureEndTime = COALESCE(?, closureEndTime),
                 updatedAt = ?
             WHERE id = ?`,
       args: [
@@ -71,13 +75,15 @@ export async function PUT(request: Request) {
         closureBannerText !== undefined ? closureBannerText : null,
         closureStartDate !== undefined ? closureStartDate : null,
         closureEndDate !== undefined ? closureEndDate : null,
+        closureStartTime !== undefined ? closureStartTime : null,
+        closureEndTime !== undefined ? closureEndTime : null,
         updatedAt,
         'default'
       ]
     });
 
     const updatedRes = await db.execute({
-      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, updatedAt FROM settings WHERE id = ?',
+      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, closureStartTime, closureEndTime, updatedAt FROM settings WHERE id = ?',
       args: ['default']
     });
 

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { Booking, Court, getSlotRate } from '@/lib/types';
+import { Booking, Court, getSlotRate, isHourInClosureRange } from '@/lib/types';
 import crypto from 'crypto';
 
 export async function GET(request: Request) {
@@ -119,28 +119,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Check if facility-wide booking is disabled or in scheduled vacation/closure
-    const settingsRes = await db.execute({
-      sql: 'SELECT isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate FROM settings WHERE id = ?',
-      args: ['default']
-    });
-    if (settingsRes.rows.length > 0) {
-      const s = settingsRes.rows[0] as any;
-      const isGloballyDisabled = Number(s.isBookingDisabled) === 1;
-      const isDateClosed = Boolean(
-        (s.closureStartDate && s.closureEndDate && bookingDate >= s.closureStartDate && bookingDate <= s.closureEndDate) ||
-        (s.closureStartDate && !s.closureEndDate && bookingDate === s.closureStartDate)
-      );
-
-      if (isGloballyDisabled || isDateClosed) {
-        const notice = s.closureBannerText || s.closureReason || 'The facility is temporarily closed for vacation or maintenance.';
-        return NextResponse.json(
-          { success: false, error: `Bookings are currently unavailable: ${notice}` },
-          { status: 400 }
-        );
-      }
-    }
-
     // Verify Court exists and is active
     const courtRes = await db.execute({ sql: 'SELECT * FROM courts WHERE id = ?', args: [courtId] });
     if (courtRes.rows.length === 0) {
@@ -180,6 +158,40 @@ export async function POST(request: Request) {
         const slotStr = `${h.toString().padStart(2, '0')}:00`;
         slotHours.push(slotStr);
         totalAmount += getSlotRate(court, slotStr);
+      }
+    }
+
+    // Check if facility-wide booking is disabled or in scheduled vacation/closure
+    const settingsRes = await db.execute({
+      sql: 'SELECT isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, closureStartTime, closureEndTime FROM settings WHERE id = ?',
+      args: ['default']
+    });
+    if (settingsRes.rows.length > 0) {
+      const s = settingsRes.rows[0] as any;
+      const isGloballyDisabled = Number(s.isBookingDisabled) === 1;
+      const isDateClosed = Boolean(
+        (s.closureStartDate && s.closureEndDate && bookingDate >= s.closureStartDate && bookingDate <= s.closureEndDate) ||
+        (s.closureStartDate && !s.closureEndDate && bookingDate === s.closureStartDate)
+      );
+
+      if (isGloballyDisabled || isDateClosed) {
+        const hasTimeWindow = Boolean(s.closureStartTime && s.closureEndTime && s.closureStartTime !== s.closureEndTime);
+        let overlapsClosureWindow = true;
+
+        if (hasTimeWindow) {
+          overlapsClosureWindow = slotHours.some((slot) =>
+            isHourInClosureRange(slot, s.closureStartTime, s.closureEndTime)
+          );
+        }
+
+        if (overlapsClosureWindow) {
+          const timeWindowNotice = hasTimeWindow ? ` (Closed between ${s.closureStartTime} and ${s.closureEndTime})` : '';
+          const notice = s.closureBannerText || s.closureReason || `The facility is temporarily closed${timeWindowNotice}.`;
+          return NextResponse.json(
+            { success: false, error: `Bookings are unavailable for this time: ${notice}` },
+            { status: 400 }
+          );
+        }
       }
     }
 

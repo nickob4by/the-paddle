@@ -102,6 +102,29 @@ export interface SystemSettings {
   closureBannerText?: string;
   closureStartDate?: string;
   closureEndDate?: string;
+  closureStartTime?: string; // e.g. "05:00"
+  closureEndTime?: string;   // e.g. "13:00"
+}
+
+export function isHourInClosureRange(
+  slotHourStr: string,
+  closureStartTime?: string,
+  closureEndTime?: string
+): boolean {
+  if (!closureStartTime || !closureEndTime) return true; // entire day closed if not set
+  if (closureStartTime === closureEndTime) return true;
+
+  const slotH = parseInt(slotHourStr.split(':')[0], 10);
+  const startH = parseInt(closureStartTime.split(':')[0], 10);
+  const endH = parseInt(closureEndTime.split(':')[0], 10);
+  if (Number.isNaN(slotH) || Number.isNaN(startH) || Number.isNaN(endH)) return true;
+
+  if (startH < endH) {
+    return slotH >= startH && slotH < endH;
+  } else {
+    // Crosses midnight, e.g. 22:00 to 05:00
+    return slotH >= startH || slotH < endH;
+  }
 }
 
 export interface Product {

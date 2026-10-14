@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Court, Booking, getSlotRate, getSlotPricingRule, parsePricingRules } from '@/lib/types';
+import { Court, Booking, getSlotRate, getSlotPricingRule, parsePricingRules, isHourInClosureRange } from '@/lib/types';
 import {
   Clock,
   Calendar as CalendarIcon,
@@ -27,6 +27,8 @@ interface CalendarSlotPickerProps {
   closureBannerText?: string;
   closureStartDate?: string;
   closureEndDate?: string;
+  closureStartTime?: string;
+  closureEndTime?: string;
   onSelectCourt: (court: Court) => void;
   onProceedToBooking: (bookingDetails: {
     court: Court;
@@ -47,6 +49,8 @@ export default function CalendarSlotPicker({
   closureBannerText = '',
   closureStartDate = '',
   closureEndDate = '',
+  closureStartTime = '',
+  closureEndTime = '',
   onSelectCourt,
   onProceedToBooking
 }: CalendarSlotPickerProps) {
@@ -63,6 +67,8 @@ export default function CalendarSlotPicker({
     (closureStartDate && closureEndDate && selectedDate >= closureStartDate && selectedDate <= closureEndDate) ||
     (closureStartDate && !closureEndDate && selectedDate === closureStartDate)
   );
+  const hasPartialTimeWindow = Boolean(closureStartTime && closureEndTime && closureStartTime !== closureEndTime);
+  const isAllDayClosure = isDateInClosure && !hasPartialTimeWindow;
   const isCurrentCourtInMaintenance = selectedCourt?.isActive === 0;
 
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -534,7 +540,7 @@ export default function CalendarSlotPicker({
         );
         const isCurrentCourtInMaintenance = selectedCourt?.isActive === 0;
 
-        if (isDateInClosure) {
+        if (isAllDayClosure) {
           return (
             <div className="mt-6 sm:mt-7 p-6 sm:p-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center animate-in fade-in">
               <AlertTriangle className="w-10 h-10 sm:w-12 sm:h-12 text-amber-500 mx-auto mb-3" />
@@ -583,29 +589,47 @@ export default function CalendarSlotPicker({
 
         return (
           <>
+            {/* Partial Closure Announcement for the current day */}
+            {isDateInClosure && hasPartialTimeWindow && (
+              <div className="mt-5 p-3 sm:p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-950 dark:text-amber-200 font-medium animate-in fade-in">
+                <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
+                <span>
+                  {closureBannerText || `Notice: Morning hours from ${closureStartTime} to ${closureEndTime} are closed for this date. Remaining hours are open for booking!`}
+                </span>
+              </div>
+            )}
+
             {/* Legend */}
             <div className="mt-5 sm:mt-6 flex flex-wrap items-center gap-3 sm:gap-4 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950/40 p-2.5 sm:p-3 rounded-xl border border-slate-200 dark:border-slate-800/60">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-md bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700" />
-          <span>Available</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-md bg-lime-500 border border-lime-500" />
-          <span className="text-lime-700 dark:text-lime-300 font-semibold">Selected</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-md bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 flex items-center justify-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-          </div>
-          <span className="text-rose-600 dark:text-rose-400">Reserved</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-md bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 opacity-60" />
-          <span className="text-slate-400 dark:text-slate-500">Passed Hour</span>
-        </div>
-      </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-md bg-slate-200 dark:bg-slate-800 border border-slate-300 dark:border-slate-700" />
+                <span>Available</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-md bg-lime-500 border border-lime-500" />
+                <span className="text-lime-700 dark:text-lime-300 font-semibold">Selected</span>
+              </div>
+              {hasPartialTimeWindow && (
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded-md bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 flex items-center justify-center">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                  </div>
+                  <span className="text-amber-700 dark:text-amber-300 font-semibold">Closed Hours</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-md bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 flex items-center justify-center">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                </div>
+                <span className="text-rose-600 dark:text-rose-400">Reserved</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-md bg-slate-200 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 opacity-60" />
+                <span className="text-slate-400 dark:text-slate-500">Passed Hour</span>
+              </div>
+            </div>
 
-      {/* STEP 3: TIME SLOTS GRID */}
+            {/* STEP 3: TIME SLOTS GRID */}
       <div className="mt-5 sm:mt-6">
         <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5 sm:mb-3 flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
@@ -629,7 +653,10 @@ export default function CalendarSlotPicker({
             const isRuleStart = slotRule && (!prevRule || prevRule.id !== slotRule.id);
             const isReturnToBase = !slotRule && prevRule && hasPricingRules;
 
-            const isDisabled = booked || inPast;
+            const isSlotClosed = Boolean(
+              isDateInClosure && hasPartialTimeWindow && isHourInClosureRange(slot, closureStartTime, closureEndTime)
+            );
+            const isDisabled = booked || inPast || isSlotClosed;
 
             return (
               <React.Fragment key={slot}>
@@ -693,6 +720,8 @@ export default function CalendarSlotPicker({
                   className={`relative group p-2.5 sm:p-3.5 rounded-xl border text-left transition-all flex flex-col justify-between min-h-[66px] sm:min-h-[74px] ${
                     isSelected
                       ? 'bg-lime-500 border-lime-500 text-slate-950 font-bold shadow-md shadow-lime-500/20 scale-[1.02] cursor-pointer'
+                      : isSlotClosed
+                      ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-300/80 dark:border-amber-800/40 text-amber-600 dark:text-amber-400/80 cursor-not-allowed opacity-75'
                       : booked
                       ? 'bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/30 text-rose-400 dark:text-rose-300/40 cursor-not-allowed opacity-75'
                       : inPast
@@ -704,6 +733,8 @@ export default function CalendarSlotPicker({
                     <span className={`text-xs sm:text-sm font-bold ${
                       isSelected
                         ? 'text-slate-950'
+                        : isSlotClosed
+                        ? 'text-amber-700 dark:text-amber-400/80 line-through'
                         : booked
                         ? 'text-rose-500/70 dark:text-rose-400/50 line-through'
                         : inPast
@@ -713,12 +744,17 @@ export default function CalendarSlotPicker({
                       {formatTime(slot)}
                     </span>
                     {isSelected && <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 stroke-[2.5]" />}
-                    {booked && (
+                    {isSlotClosed && (
+                      <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60">
+                        Closed
+                      </span>
+                    )}
+                    {booked && !isSlotClosed && (
                       <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800/50">
                         Booked
                       </span>
                     )}
-                    {inPast && !booked && (
+                    {inPast && !booked && !isSlotClosed && (
                       <span className="text-[9px] sm:text-[10px] font-semibold tracking-wider px-1 sm:px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-900/60 text-slate-400 dark:text-slate-500 border border-slate-300/60 dark:border-slate-800/60">
                         Passed
                       </span>
@@ -729,13 +765,13 @@ export default function CalendarSlotPicker({
                     <span className={`text-[10px] sm:text-[11px] ${
                       isSelected
                         ? 'text-slate-900 font-semibold'
-                        : inPast
+                        : inPast || isSlotClosed
                         ? 'text-slate-400 dark:text-slate-600'
                         : 'text-slate-500 dark:text-slate-400'
                     }`}>
                       until {formatTime(slotEndStr)}
                     </span>
-                    {!booked && !inPast && (
+                    {!booked && !inPast && !isSlotClosed && (
                       <span className={`text-[11px] sm:text-xs font-black ${
                         isSelected
                           ? 'text-slate-950'
@@ -758,7 +794,7 @@ export default function CalendarSlotPicker({
 })()}
 
       {/* Bottom Summary Bar */}
-      {!isDateInClosure && !isCurrentCourtInMaintenance && selectedSlots.length > 0 && selectedDate && selectedCourt && (
+      {!isAllDayClosure && !isCurrentCourtInMaintenance && selectedSlots.length > 0 && selectedDate && selectedCourt && (
         <div className="mt-6 sm:mt-8 p-4 sm:p-5 bg-slate-100 dark:bg-slate-800/90 rounded-2xl border border-lime-500/50 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 animate-in fade-in slide-in-from-bottom-2">
           <div className="space-y-0.5 sm:space-y-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -807,7 +843,7 @@ export default function CalendarSlotPicker({
         </div>
       )}
 
-      {!isDateInClosure && !isCurrentCourtInMaintenance && selectedSlots.length === 0 && (
+      {!isAllDayClosure && !isCurrentCourtInMaintenance && selectedSlots.length === 0 && (
         <div className="mt-5 sm:mt-6 p-3 sm:p-4 rounded-xl bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800/80 flex items-center gap-2.5 text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
           <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-500 dark:text-amber-400 flex-shrink-0" />
           <span>Click on one or more available time slots above to select your play time.</span>

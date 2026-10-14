@@ -32,6 +32,8 @@ export default function HomePage() {
   const [closureBannerText, setClosureBannerText] = useState<string>('');
   const [closureStartDate, setClosureStartDate] = useState<string>('');
   const [closureEndDate, setClosureEndDate] = useState<string>('');
+  const [closureStartTime, setClosureStartTime] = useState<string>('');
+  const [closureEndTime, setClosureEndTime] = useState<string>('');
   const [todayStr, setTodayStr] = useState<string>('');
 
   // Fetch active courts and facility settings
@@ -61,7 +63,9 @@ export default function HomePage() {
           isBookingDisabled: disabled = 0,
           closureBannerText: banner = '',
           closureStartDate: start = '',
-          closureEndDate: end = ''
+          closureEndDate: end = '',
+          closureStartTime: startTimeVal = '',
+          closureEndTime: endTimeVal = ''
         } = settingsData.settings;
 
         setCourtOpenTime(open);
@@ -70,6 +74,8 @@ export default function HomePage() {
         setClosureBannerText(banner);
         setClosureStartDate(start);
         setClosureEndDate(end);
+        setClosureStartTime(startTimeVal || '');
+        setClosureEndTime(endTimeVal || '');
 
         const formatBadgeTime = (t: string) => {
           const h = parseInt(t.split(':')[0], 10);
@@ -119,13 +125,18 @@ export default function HomePage() {
     )
   );
 
+  const hasPartialTimeWindow = Boolean(closureStartTime && closureEndTime && closureStartTime !== closureEndTime);
   const isFacilityClosed = isBookingDisabled || isScheduledClosedToday;
 
   let noticeBannerText = '';
   if (isFacilityClosed) {
-    noticeBannerText = closureBannerText || 'Notice: The facility is temporarily closed for vacation or maintenance. Online bookings will resume shortly!';
+    if (hasPartialTimeWindow) {
+      noticeBannerText = closureBannerText || `Notice: Morning hours from ${closureStartTime} to ${closureEndTime} are closed for reservations today. Remaining hours are open!`;
+    } else {
+      noticeBannerText = closureBannerText || 'Notice: The facility is temporarily closed for vacation or maintenance. Online bookings will resume shortly!';
+    }
   } else if (closureStartDate && closureEndDate && todayStr < closureStartDate) {
-    noticeBannerText = `Upcoming Notice: The facility will be closed from ${closureStartDate} to ${closureEndDate}${closureBannerText ? ` (${closureBannerText})` : ''}. Advance bookings outside these dates remain available.`;
+    noticeBannerText = `Upcoming Notice: The facility will be closed ${hasPartialTimeWindow ? `(${closureStartTime} to ${closureEndTime}) ` : ''}from ${closureStartDate} to ${closureEndDate}${closureBannerText ? ` (${closureBannerText})` : ''}. Advance bookings outside these dates remain available.`;
   } else if (inactiveCourts.length > 0 && activeCourts.length > 0) {
     noticeBannerText = `Court Notice: ${inactiveCourts.map((c) => c.name).join(', ')} is currently closed for maintenance. ${activeCourts.map((c) => c.name).join(', ')} is available and accepting bookings!`;
   } else if (courts.length > 0 && activeCourts.length === 0) {
@@ -291,6 +302,8 @@ export default function HomePage() {
                 closureBannerText={closureBannerText}
                 closureStartDate={closureStartDate}
                 closureEndDate={closureEndDate}
+                closureStartTime={closureStartTime}
+                closureEndTime={closureEndTime}
                 onSelectCourt={(c) => setSelectedCourt(c)}
                 onProceedToBooking={handleProceedToBooking}
               />
