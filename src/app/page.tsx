@@ -143,7 +143,7 @@ export default function HomePage() {
         
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
           {/* Official Emblem Logo - Enlarged and Centerpiece */}
-          <div className="flex justify-center mb-6 sm:mb-8">
+          <div className="flex justify-center mb-3 sm:mb-4">
             <div className="relative h-36 sm:h-52 md:h-64 lg:h-76 w-auto flex items-center justify-center transition-all duration-300 hover:scale-105">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -157,6 +157,14 @@ export default function HomePage() {
                 alt={siteConfig.brandName}
                 className="h-36 sm:h-52 md:h-64 lg:h-76 w-auto object-contain hidden dark:block drop-shadow-[0_16px_45px_rgba(163,230,53,0.28)]"
               />
+            </div>
+          </div>
+
+          {/* Facility Location Badge */}
+          <div className="flex justify-center mb-6 sm:mb-8">
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 text-xs text-slate-700 dark:text-slate-300 font-medium shadow-xs">
+              <MapPin className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400 flex-shrink-0" />
+              <span>{siteConfig.address}</span>
             </div>
           </div>
 
@@ -283,10 +291,16 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="mt-auto py-8 sm:py-10 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-900 text-xs text-slate-500">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-            <span className="font-bold text-slate-700 dark:text-slate-300">{siteConfig.brandName}</span>
-            <span>•</span>
-            <span>All rights reserved © 2026</span>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+              <span className="font-bold text-slate-700 dark:text-slate-300">{siteConfig.brandName}</span>
+              <span>•</span>
+              <span>All rights reserved © 2026</span>
+            </div>
+            <div className="flex items-center justify-center sm:justify-start gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <MapPin className="w-3 h-3 text-lime-600 dark:text-lime-400 flex-shrink-0" />
+              <span>{siteConfig.address}</span>
+            </div>
           </div>
 
           <div className="flex items-center gap-4">

@@ -371,6 +371,7 @@ TURSO_AUTH_TOKEN="${config.tursoAuthToken}"
 # Brand Customization
 NEXT_PUBLIC_BRAND_NAME="${config.brandName}"
 NEXT_PUBLIC_BRAND_TAGLINE="${config.brandTagline || 'Recreational Hub & Pickleball Club'}"
+NEXT_PUBLIC_ADDRESS="${config.address || 'Purok 20, Cambanogoy, Asuncion, Davao Del Norte'}"
 NEXT_PUBLIC_CONTACT_PHONE="${config.contactPhone || ''}"
 NEXT_PUBLIC_DEFAULT_OPEN_TIME="${config.courtOpenTime || '05:00'}"
 NEXT_PUBLIC_DEFAULT_CLOSE_TIME="${config.courtCloseTime || '03:00'}"

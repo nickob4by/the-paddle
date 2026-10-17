@@ -23,5 +23,5 @@ export const siteConfig: SiteConfig = {
   defaultCloseTime: process.env.NEXT_PUBLIC_DEFAULT_CLOSE_TIME || '03:00',
   contactEmail: process.env.NEXT_PUBLIC_CONTACT_EMAIL || '',
   contactPhone: process.env.NEXT_PUBLIC_CONTACT_PHONE || '0917-888-PADL (7235)',
-  address: process.env.NEXT_PUBLIC_ADDRESS || 'Cebu City, Philippines',
+  address: process.env.NEXT_PUBLIC_ADDRESS || 'Purok 20, Cambanogoy, Asuncion, Davao Del Norte',
 };
