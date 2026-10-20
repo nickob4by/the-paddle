@@ -171,6 +171,7 @@ export default function AdminPage() {
   const [settingsClosureEndDate, setSettingsClosureEndDate] = useState('');
   const [settingsClosureStartTime, setSettingsClosureStartTime] = useState('');
   const [settingsClosureEndTime, setSettingsClosureEndTime] = useState('');
+  const [settingsNoticeBannerEnabled, setSettingsNoticeBannerEnabled] = useState(false);
   const [settingsPin, setSettingsPin] = useState('');
   const [settingsSavedMsg, setSettingsSavedMsg] = useState('');
   const [uploadingQr, setUploadingQr] = useState(false);
@@ -325,6 +326,7 @@ export default function AdminPage() {
           setSettingsClosureEndDate(settingsData.settings.closureEndDate || '');
           setSettingsClosureStartTime(settingsData.settings.closureStartTime || '');
           setSettingsClosureEndTime(settingsData.settings.closureEndTime || '');
+          setSettingsNoticeBannerEnabled(Number(settingsData.settings.noticeBannerEnabled) === 1);
           setSettingsOpenPlayEnabled(settingsData.settings.openPlayEnabled !== 0);
           setSettingsOpenPlayStartTime(settingsData.settings.openPlayStartTime || '05:00');
           setSettingsOpenPlayEndTime(settingsData.settings.openPlayEndTime || '11:00');
@@ -937,6 +939,7 @@ export default function AdminPage() {
           closureEndDate: settingsClosureEndDate,
           closureStartTime: settingsClosureStartTime,
           closureEndTime: settingsClosureEndTime,
+          noticeBannerEnabled: settingsNoticeBannerEnabled ? 1 : 0,
           openPlayEnabled: settingsOpenPlayEnabled ? 1 : 0,
           openPlayStartTime: settingsOpenPlayStartTime,
           openPlayEndTime: settingsOpenPlayEndTime,
@@ -998,6 +1001,7 @@ export default function AdminPage() {
 
   // Live banner preview calculation using shared computeNoticeBannerText
   const previewBannerText = computeNoticeBannerText({
+    noticeBannerEnabled: true,
     isBookingDisabled: settingsIsBookingDisabled,
     closureBannerText: settingsClosureBannerText,
     closureStartDate: settingsClosureStartDate,
@@ -3357,11 +3361,52 @@ export default function AdminPage() {
                   </div>
                 </div>
 
+                {/* Master Notice Banner Toggle */}
+                <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700">
+                  <div className="space-y-0.5 pr-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-900 dark:text-white">
+                        Show Notice Banner on Homepage
+                      </span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        settingsNoticeBannerEnabled
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-600'
+                      }`}>
+                        {settingsNoticeBannerEnabled ? '● Active on Homepage' : '○ Hidden (Disabled)'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Turn ON to display the announcement notice banner at the top of the client booking page, or turn OFF to keep the homepage header clean.
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer ml-3 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={settingsNoticeBannerEnabled}
+                      onChange={(e) => setSettingsNoticeBannerEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-lime-500"></div>
+                  </label>
+                </div>
+
                 {/* Announcement Message & Presets */}
                 <div className="space-y-2">
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    Client Notice & Banner Message
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Client Notice & Banner Message
+                    </label>
+                    {settingsClosureBannerText && (
+                      <button
+                        type="button"
+                        onClick={() => setSettingsClosureBannerText('')}
+                        className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                      >
+                        Clear Text
+                      </button>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-1.5 mb-1.5">
                     <button
                       type="button"
@@ -3369,6 +3414,7 @@ export default function AdminPage() {
                         setSettingsClosureStartTime('05:00');
                         setSettingsClosureEndTime('13:00');
                         setSettingsClosureBannerText('Notice: Closed in the morning (5:00 AM – 1:00 PM). Open from 1:00 PM onwards!');
+                        setSettingsNoticeBannerEnabled(true);
                       }}
                       className="px-2 py-1 rounded-lg bg-lime-500/15 border border-lime-500/30 text-[10px] font-bold text-lime-800 dark:text-lime-300 hover:bg-lime-500/25 transition-colors cursor-pointer"
                     >
@@ -3376,21 +3422,30 @@ export default function AdminPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSettingsClosureBannerText('We are closed for annual court resurfacing & maintenance. Regular games resume soon!')}
+                      onClick={() => {
+                        setSettingsClosureBannerText('We are closed for annual court resurfacing & maintenance. Regular games resume soon!');
+                        setSettingsNoticeBannerEnabled(true);
+                      }}
                       className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                     >
                       + Maintenance Preset
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSettingsClosureBannerText('We are currently on vacation / holiday break! Regular bookings will reopen shortly.')}
+                      onClick={() => {
+                        setSettingsClosureBannerText('We are currently on vacation / holiday break! Regular bookings will reopen shortly.');
+                        setSettingsNoticeBannerEnabled(true);
+                      }}
                       className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                     >
                       + Vacation Preset
                     </button>
                     <button
                       type="button"
-                      onClick={() => setSettingsClosureBannerText('Temporarily closed today due to weather conditions. Stay tuned for updates!')}
+                      onClick={() => {
+                        setSettingsClosureBannerText('Temporarily closed today due to weather conditions. Stay tuned for updates!');
+                        setSettingsNoticeBannerEnabled(true);
+                      }}
                       className="px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors cursor-pointer"
                     >
                       + Weather/Typhoon Preset
@@ -3408,11 +3463,24 @@ export default function AdminPage() {
                 {/* Exact Client Banner Live Preview */}
                 {previewBannerText && (
                   <div className="space-y-1.5 pt-1 animate-in fade-in">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
-                      Client Banner Preview (Exact Homepage Appearance):
-                    </span>
-                    <div className="rounded-xl overflow-hidden border border-amber-500/40 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                        <Eye className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+                        Client Banner Preview:
+                      </span>
+                      <span className={`text-[10px] font-semibold ${
+                        settingsNoticeBannerEnabled
+                          ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+                          : 'text-slate-400 dark:text-slate-500 italic'
+                      }`}>
+                        {settingsNoticeBannerEnabled ? '● Visible on Homepage' : '○ Hidden from Clients (Toggle is OFF)'}
+                      </span>
+                    </div>
+                    <div className={`rounded-xl overflow-hidden transition-all ${
+                      settingsNoticeBannerEnabled
+                        ? 'border border-amber-500/40 shadow-sm opacity-100'
+                        : 'border border-dashed border-slate-300 dark:border-slate-700 opacity-60'
+                    }`}>
                       <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 py-3 px-4 sm:px-6">
                         <div className="flex items-center justify-center gap-2.5 text-center text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-200">
                           <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
@@ -3420,6 +3488,11 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
+                    {!settingsNoticeBannerEnabled && (
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 italic text-center">
+                        Notice banner is currently disabled and hidden from the homepage. Turn ON the toggle above to activate.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>

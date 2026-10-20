@@ -57,7 +57,11 @@ export async function execute(query: string | { sql: string; args?: any[] }): Pr
   }
 
   const data = await response.json() as any;
-  const execResult = data?.results?.[0]?.response?.result;
+  const firstResult = data?.results?.[0];
+  if (firstResult?.type === 'error') {
+    throw new Error(`Turso Query Error: ${firstResult.error?.message || 'Unknown database error'}`);
+  }
+  const execResult = firstResult?.response?.result;
 
   if (!execResult) {
     return { rows: [], rowsAffected: 0 };

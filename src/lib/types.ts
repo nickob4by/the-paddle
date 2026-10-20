@@ -112,6 +112,7 @@ export interface SystemSettings {
   openPlayCapacity?: number;  // e.g. 16
   openPlayCourtIds?: string;  // "all" or JSON array e.g. '["court-1"]'
   openPlayDays?: string;      // JSON array e.g. '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
+  noticeBannerEnabled?: number; // 1 = enabled (visible on homepage), 0 = disabled (hidden)
 }
 
 export function parseOpenPlayCourtIds(courtIds?: string): string[] {
@@ -235,6 +236,7 @@ export interface PosOrder {
 }
 
 export interface NoticeBannerParams {
+  noticeBannerEnabled?: boolean | number;
   isBookingDisabled: boolean;
   closureBannerText?: string;
   closureStartDate?: string;
@@ -247,6 +249,7 @@ export interface NoticeBannerParams {
 }
 
 export function computeNoticeBannerText({
+  noticeBannerEnabled,
   isBookingDisabled,
   closureBannerText = '',
   closureStartDate = '',
@@ -257,6 +260,10 @@ export function computeNoticeBannerText({
   inactiveCourtNames = [],
   activeCourtCount = 0
 }: NoticeBannerParams): string {
+  if (noticeBannerEnabled !== undefined && !noticeBannerEnabled) {
+    return '';
+  }
+
   const customBanner = (closureBannerText || '').trim();
   const hasPartialTimeWindow = Boolean(closureStartTime && closureEndTime && closureStartTime !== closureEndTime);
   

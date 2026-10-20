@@ -35,6 +35,7 @@ export default function HomePage() {
   const [closureEndDate, setClosureEndDate] = useState<string>('');
   const [closureStartTime, setClosureStartTime] = useState<string>('');
   const [closureEndTime, setClosureEndTime] = useState<string>('');
+  const [noticeBannerEnabled, setNoticeBannerEnabled] = useState<boolean>(false);
   const [openPlaySettings, setOpenPlaySettings] = useState<{
     openPlayEnabled?: number;
     openPlayStartTime?: string;
@@ -82,7 +83,8 @@ export default function HomePage() {
           openPlayPrice = 130,
           openPlayCapacity = 16,
           openPlayCourtIds = 'all',
-          openPlayDays = '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
+          openPlayDays = '["MON","TUE","WED","THU","FRI","SAT","SUN"]',
+          noticeBannerEnabled = 0
         } = settingsData.settings;
 
         setCourtOpenTime(open);
@@ -93,6 +95,7 @@ export default function HomePage() {
         setClosureEndDate(end);
         setClosureStartTime(startTimeVal || '');
         setClosureEndTime(endTimeVal || '');
+        setNoticeBannerEnabled(Number(noticeBannerEnabled) === 1);
         setOpenPlaySettings({
           openPlayEnabled: Number(openPlayEnabled),
           openPlayStartTime,
@@ -137,6 +140,7 @@ export default function HomePage() {
   const activeCourts = courts.filter((c) => c.isActive === 1);
 
   const noticeBannerText = computeNoticeBannerText({
+    noticeBannerEnabled,
     isBookingDisabled,
     closureBannerText,
     closureStartDate,
@@ -154,7 +158,7 @@ export default function HomePage() {
       <Navbar onOpenLookup={() => setIsLookupOpen(true)} />
 
       {/* Announcement Notice Banner */}
-      {noticeBannerText && (
+      {noticeBannerEnabled && noticeBannerText && (
         <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 border-b border-amber-500/30 py-2.5 sm:py-3 px-4 sm:px-6">
           <div className="max-w-7xl mx-auto flex items-center justify-center gap-2.5 text-center text-xs sm:text-sm font-bold text-amber-950 dark:text-amber-200">
             <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 animate-pulse" />
