@@ -241,10 +241,14 @@ export default function CalendarSlotPicker({
     if (!selectedCourt?.id || !selectedDate) return;
     try {
       setLoadingBookings(true);
-      const res = await fetch(`/api/bookings?courtId=${selectedCourt.id}&date=${selectedDate}`);
+      const res = await fetch(`/api/bookings?courtId=${selectedCourt.id}&date=${selectedDate}`, {
+        cache: 'no-store'
+      });
       const data = await res.json();
       if (data.success) {
         setExistingBookings(data.bookings || []);
+      } else {
+        console.warn('Failed to load bookings:', data.error);
       }
       setLastRefreshed(new Date().toLocaleTimeString());
     } catch (err) {
@@ -326,6 +330,7 @@ export default function CalendarSlotPicker({
     return existingBookings.some((b) => {
       if (b.bookingStatus === 'CANCELLED') return false;
       if (b.bookingType === 'OPEN_PLAY') return false; // Open play passes do not occupy individual private slots
+      if (b.courtId && selectedCourt?.id && b.courtId !== selectedCourt.id) return false;
 
       const bStartH = parseInt(b.startTime.split(':')[0], 10);
       let bEndH = parseInt(b.endTime.split(':')[0], 10);

@@ -16,7 +16,7 @@ let schemaMigrated = false;
 async function ensureBookingsSchema() {
   if (schemaMigrated) return;
   try {
-    await db.execute('ALTER TABLE bookings ADD COLUMN bookingType TEXT DEFAULT "STANDARD"');
+    await db.execute("ALTER TABLE bookings ADD COLUMN bookingType TEXT DEFAULT 'STANDARD'");
   } catch {
     // Column already exists or table altered
   }
@@ -46,8 +46,8 @@ export async function GET(request: Request) {
     // include both private bookings for this court AND all open play bookings on that date
     // so the client can calculate live open play spot availability accurately.
     if (courtId && date) {
-      query += ' AND b.bookingDate = ? AND (b.courtId = ? OR b.bookingType = "OPEN_PLAY")';
-      params.push(date, courtId);
+      query += ' AND b.bookingDate = ? AND (b.courtId = ? OR b.bookingType = ?)';
+      params.push(date, courtId, 'OPEN_PLAY');
     } else {
       if (date) {
         query += ' AND b.bookingDate = ?';
