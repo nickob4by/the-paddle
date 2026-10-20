@@ -24,6 +24,7 @@ export default function HomePage() {
     endTime: string;
     durationHours: number;
     totalAmount: number;
+    bookingType?: 'STANDARD' | 'OPEN_PLAY';
   } | null>(null);
 
   const [courtOpenTime, setCourtOpenTime] = useState<string>('');
@@ -34,6 +35,15 @@ export default function HomePage() {
   const [closureEndDate, setClosureEndDate] = useState<string>('');
   const [closureStartTime, setClosureStartTime] = useState<string>('');
   const [closureEndTime, setClosureEndTime] = useState<string>('');
+  const [openPlaySettings, setOpenPlaySettings] = useState<{
+    openPlayEnabled?: number;
+    openPlayStartTime?: string;
+    openPlayEndTime?: string;
+    openPlayPrice?: number;
+    openPlayCapacity?: number;
+    openPlayCourtIds?: string;
+    openPlayDays?: string;
+  }>({});
   const [todayStr, setTodayStr] = useState<string>('');
 
   // Fetch active courts and facility settings
@@ -65,7 +75,14 @@ export default function HomePage() {
           closureStartDate: start = '',
           closureEndDate: end = '',
           closureStartTime: startTimeVal = '',
-          closureEndTime: endTimeVal = ''
+          closureEndTime: endTimeVal = '',
+          openPlayEnabled = 1,
+          openPlayStartTime = '05:00',
+          openPlayEndTime = '11:00',
+          openPlayPrice = 130,
+          openPlayCapacity = 16,
+          openPlayCourtIds = 'all',
+          openPlayDays = '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
         } = settingsData.settings;
 
         setCourtOpenTime(open);
@@ -76,6 +93,15 @@ export default function HomePage() {
         setClosureEndDate(end);
         setClosureStartTime(startTimeVal || '');
         setClosureEndTime(endTimeVal || '');
+        setOpenPlaySettings({
+          openPlayEnabled: Number(openPlayEnabled),
+          openPlayStartTime,
+          openPlayEndTime,
+          openPlayPrice: Number(openPlayPrice),
+          openPlayCapacity: Number(openPlayCapacity),
+          openPlayCourtIds,
+          openPlayDays
+        });
       }
     } catch (err) {
       console.error('Error fetching courts/settings:', err);
@@ -100,6 +126,7 @@ export default function HomePage() {
     endTime: string;
     durationHours: number;
     totalAmount: number;
+    bookingType?: 'STANDARD' | 'OPEN_PLAY';
   }) => {
     setCurrentBookingDetails(details);
     setIsBookingOpen(true);
@@ -280,6 +307,13 @@ export default function HomePage() {
                 closureEndDate={closureEndDate}
                 closureStartTime={closureStartTime}
                 closureEndTime={closureEndTime}
+                openPlayEnabled={openPlaySettings.openPlayEnabled}
+                openPlayStartTime={openPlaySettings.openPlayStartTime}
+                openPlayEndTime={openPlaySettings.openPlayEndTime}
+                openPlayPrice={openPlaySettings.openPlayPrice}
+                openPlayCapacity={openPlaySettings.openPlayCapacity}
+                openPlayCourtIds={openPlaySettings.openPlayCourtIds}
+                openPlayDays={openPlaySettings.openPlayDays}
                 onSelectCourt={(c) => setSelectedCourt(c)}
                 onProceedToBooking={handleProceedToBooking}
               />

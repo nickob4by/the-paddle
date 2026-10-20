@@ -1,7 +1,18 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Court, Booking, getSlotRate, getSlotPricingRule, parsePricingRules, isHourInClosureRange } from '@/lib/types';
+import {
+  Court,
+  Booking,
+  SystemSettings,
+  getSlotRate,
+  getSlotPricingRule,
+  parsePricingRules,
+  isHourInClosureRange,
+  isOpenPlayActiveOnDate,
+  isCourtParticipatingInOpenPlay,
+  isHourInOpenPlayWindow
+} from '@/lib/types';
 import {
   Clock,
   Calendar as CalendarIcon,
@@ -15,7 +26,8 @@ import {
   Moon,
   Sun,
   Wrench,
-  AlertTriangle
+  AlertTriangle,
+  Users
 } from 'lucide-react';
 
 interface CalendarSlotPickerProps {
@@ -29,6 +41,13 @@ interface CalendarSlotPickerProps {
   closureEndDate?: string;
   closureStartTime?: string;
   closureEndTime?: string;
+  openPlayEnabled?: number;
+  openPlayStartTime?: string;
+  openPlayEndTime?: string;
+  openPlayPrice?: number;
+  openPlayCapacity?: number;
+  openPlayCourtIds?: string;
+  openPlayDays?: string;
   onSelectCourt: (court: Court) => void;
   onProceedToBooking: (bookingDetails: {
     court: Court;
@@ -37,6 +56,7 @@ interface CalendarSlotPickerProps {
     endTime: string;
     durationHours: number;
     totalAmount: number;
+    bookingType?: 'STANDARD' | 'OPEN_PLAY';
   }) => void;
 }
 
@@ -51,6 +71,13 @@ export default function CalendarSlotPicker({
   closureEndDate = '',
   closureStartTime = '',
   closureEndTime = '',
+  openPlayEnabled,
+  openPlayStartTime,
+  openPlayEndTime,
+  openPlayPrice,
+  openPlayCapacity,
+  openPlayCourtIds,
+  openPlayDays,
   onSelectCourt,
   onProceedToBooking
 }: CalendarSlotPickerProps) {
@@ -70,6 +97,32 @@ export default function CalendarSlotPicker({
   const hasPartialTimeWindow = Boolean(closureStartTime && closureEndTime && closureStartTime !== closureEndTime);
   const isAllDayClosure = isDateInClosure && !hasPartialTimeWindow;
   const isCurrentCourtInMaintenance = selectedCourt?.isActive === 0;
+
+  const openPlaySettings = useMemo(() => ({
+    openPlayEnabled: openPlayEnabled !== undefined ? openPlayEnabled : 1,
+    openPlayStartTime: openPlayStartTime || '05:00',
+    openPlayEndTime: openPlayEndTime || '11:00',
+    openPlayPrice: openPlayPrice !== undefined ? openPlayPrice : 130,
+    openPlayCapacity: openPlayCapacity !== undefined ? openPlayCapacity : 16,
+    openPlayCourtIds: openPlayCourtIds || 'all',
+    openPlayDays: openPlayDays || '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
+  }), [openPlayEnabled, openPlayStartTime, openPlayEndTime, openPlayPrice, openPlayCapacity, openPlayCourtIds, openPlayDays]);
+
+  const isOpenPlayActive = useMemo(() => {
+    return isOpenPlayActiveOnDate(selectedDate, openPlaySettings) &&
+           isCourtParticipatingInOpenPlay(selectedCourt?.id, openPlaySettings);
+  }, [selectedDate, selectedCourt?.id, openPlaySettings]);
+
+  // Open Play headcount tracking on selected date
+  const openPlayHeadcount = useMemo(() => {
+    return existingBookings.filter(
+      (b) => b.bookingType === 'OPEN_PLAY' && b.bookingStatus !== 'CANCELLED'
+    ).length;
+  }, [existingBookings]);
+
+  const openPlayCapacityLimit = openPlaySettings.openPlayCapacity;
+  const spotsRemaining = Math.max(0, openPlayCapacityLimit - openPlayHeadcount);
+  const isOpenPlayFull = spotsRemaining === 0;
 
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -272,6 +325,8 @@ export default function CalendarSlotPicker({
 
     return existingBookings.some((b) => {
       if (b.bookingStatus === 'CANCELLED') return false;
+      if (b.bookingType === 'OPEN_PLAY') return false; // Open play passes do not occupy individual private slots
+
       const bStartH = parseInt(b.startTime.split(':')[0], 10);
       let bEndH = parseInt(b.endTime.split(':')[0], 10);
       if (b.endTime === '24:00') bEndH = 24;
@@ -284,6 +339,26 @@ export default function CalendarSlotPicker({
       }
     });
   };
+
+  // Check if morning open play session has already concluded today
+  const isOpenPlaySessionPassed = useMemo(() => {
+    if (!selectedDate) return false;
+    const today = getTodayStr();
+    if (selectedDate < today) return true;
+    if (selectedDate > today) return false;
+
+    // For today:
+    const now = new Date();
+    const currentH = now.getHours();
+    const endH = parseInt(openPlaySettings.openPlayEndTime.split(':')[0], 10) || 11;
+    return currentH >= endH;
+  }, [selectedDate, openPlaySettings.openPlayEndTime]);
+
+  // If Open Play is active on this court and date, filter morning slots from the individual 1-hour grid
+  const displaySlots = useMemo(() => {
+    if (!isOpenPlayActive) return timeSlots;
+    return timeSlots.filter((slot) => !isHourInOpenPlayWindow(slot, openPlaySettings));
+  }, [isOpenPlayActive, timeSlots, openPlaySettings]);
 
   // Toggle slot selection
   const handleSlotToggle = (slot: string) => {
@@ -629,16 +704,103 @@ export default function CalendarSlotPicker({
               </div>
             </div>
 
-            {/* STEP 3: TIME SLOTS GRID */}
+            {/* STEP 3: TIME SLOTS GRID OR MORNING OPEN PLAY */}
       <div className="mt-5 sm:mt-6">
         <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5 sm:mb-3 flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
-          Step 3 • Available 1-Hour Time Slots ({selectedCourt?.name})
+          {isOpenPlayActive ? `Step 3 • Morning Open Play & Available Hours (${selectedCourt?.name})` : `Step 3 • Available 1-Hour Time Slots (${selectedCourt?.name})`}
         </label>
+
+        {/* MORNING OPEN PLAY SESSION CARD */}
+        {isOpenPlayActive && (
+          <div className="mb-4 sm:mb-5 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-lime-500/10 via-emerald-500/10 to-teal-500/10 border-2 border-lime-500/40 dark:border-lime-500/30 shadow-md animate-in fade-in">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="space-y-1 sm:space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-lime-500 text-slate-950 font-black text-[10px] sm:text-[11px] tracking-wider uppercase flex items-center gap-1 shadow-xs">
+                    <Sparkles className="w-3 h-3 stroke-[2.5]" />
+                    Unlimited Morning Pass
+                  </span>
+                  <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white">
+                    Morning Open Play ({formatTime(openPlaySettings.openPlayStartTime)} – {formatTime(openPlaySettings.openPlayEndTime)})
+                  </span>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 max-w-xl leading-relaxed">
+                  Single player pass for unlimited play across all participating courts throughout the morning. Drop in, rotate matches, and play!
+                </p>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
+                  <span className="font-black text-lime-600 dark:text-lime-400 text-base sm:text-lg">
+                    ₱{openPlaySettings.openPlayPrice} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">/ player</span>
+                  </span>
+                  <span className="text-slate-300 dark:text-slate-700">•</span>
+                  <span className={`inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] ${
+                    isOpenPlayFull
+                      ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30'
+                      : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${isOpenPlayFull ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'}`} />
+                    {isOpenPlayFull
+                      ? `Session Full (${openPlayCapacityLimit}/${openPlayCapacityLimit} registered)`
+                      : `${spotsRemaining} / ${openPlayCapacityLimit} spots left`}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex-shrink-0 pt-2 sm:pt-0">
+                <button
+                  type="button"
+                  disabled={isOpenPlayFull || isOpenPlaySessionPassed || isDateInClosure}
+                  onClick={() => {
+                    onProceedToBooking({
+                      court: selectedCourt,
+                      date: selectedDate,
+                      startTime: openPlaySettings.openPlayStartTime,
+                      endTime: openPlaySettings.openPlayEndTime,
+                      durationHours: 6,
+                      totalAmount: openPlaySettings.openPlayPrice,
+                      bookingType: 'OPEN_PLAY'
+                    });
+                  }}
+                  className={`w-full sm:w-auto px-5 py-3 rounded-xl font-black text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                    isOpenPlayFull || isOpenPlaySessionPassed || isDateInClosure
+                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed border border-slate-300 dark:border-slate-700'
+                      : 'bg-lime-500 hover:bg-lime-400 text-slate-950 shadow-lime-500/25 hover:scale-105 active:scale-95'
+                  }`}
+                >
+                  <span>
+                    {isOpenPlaySessionPassed
+                      ? 'Morning Session Concluded Today'
+                      : isOpenPlayFull
+                      ? 'Session Full (Sold Out)'
+                      : `Book Open Play Pass (₱${openPlaySettings.openPlayPrice})`}
+                  </span>
+                  {!isOpenPlayFull && !isOpenPlaySessionPassed && !isDateInClosure && (
+                    <ChevronRight className="w-4 h-4 stroke-[3]" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Section Divider for Regular Reservations if Open Play is Active */}
+        {isOpenPlayActive && displaySlots.length > 0 && (
+          <div className="mb-3 pt-1 flex items-center justify-between pb-1 border-b border-slate-200 dark:border-slate-800">
+            <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+              Standard Hourly Reservations (From {formatTime(openPlaySettings.openPlayEndTime)} onwards)
+            </span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              ₱{selectedCourt?.hourlyRate}/hr
+            </span>
+          </div>
+        )}
 
         {/* Responsive grid: 2 cols on mobile, 3 on sm, 4 on md+ */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
-          {timeSlots.map((slot, idx) => {
+          {displaySlots.map((slot, idx) => {
             const booked = isSlotBooked(slot);
             const inPast = isSlotInPast(slot);
             const isSelected = selectedSlots.includes(slot);
@@ -648,7 +810,7 @@ export default function CalendarSlotPicker({
             const slotRule = getSlotPricingRule(selectedCourt, slot);
             const hasPricingRules = parsePricingRules(selectedCourt?.pricingRules).length > 0;
 
-            const prevSlot = idx > 0 ? timeSlots[idx - 1] : null;
+            const prevSlot = idx > 0 ? displaySlots[idx - 1] : null;
             const prevRule = prevSlot ? getSlotPricingRule(selectedCourt, prevSlot) : null;
             const isRuleStart = slotRule && (!prevRule || prevRule.id !== slotRule.id);
             const isReturnToBase = !slotRule && prevRule && hasPricingRules;
@@ -831,7 +993,8 @@ export default function CalendarSlotPicker({
                   startTime,
                   endTime,
                   durationHours,
-                  totalAmount
+                  totalAmount,
+                  bookingType: 'STANDARD'
                 });
               }}
               className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-lime-500/30 transition-all cursor-pointer hover:scale-105 active:scale-95"

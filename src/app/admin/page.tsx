@@ -75,7 +75,8 @@ import {
   ChevronDown,
   ChevronUp,
   Wrench,
-  AlertTriangle
+  AlertTriangle,
+  Sparkles
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -99,6 +100,8 @@ export default function AdminPage() {
   const [selectedCourtFilter, setSelectedCourtFilter] = useState('ALL');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
   const [selectedDateFilter, setSelectedDateFilter] = useState('');
+  const [bookingTypeFilter, setBookingTypeFilter] = useState<'ALL' | 'STANDARD' | 'OPEN_PLAY'>('ALL');
+  const [rosterDate, setRosterDate] = useState<string>('');
 
   // Modals
   const [isAddCourtOpen, setIsAddCourtOpen] = useState(false);
@@ -172,6 +175,15 @@ export default function AdminPage() {
   const [settingsSavedMsg, setSettingsSavedMsg] = useState('');
   const [uploadingQr, setUploadingQr] = useState(false);
   const [qrImgError, setQrImgError] = useState(false);
+
+  // Morning Open Play states
+  const [settingsOpenPlayEnabled, setSettingsOpenPlayEnabled] = useState(true);
+  const [settingsOpenPlayStartTime, setSettingsOpenPlayStartTime] = useState('05:00');
+  const [settingsOpenPlayEndTime, setSettingsOpenPlayEndTime] = useState('11:00');
+  const [settingsOpenPlayPrice, setSettingsOpenPlayPrice] = useState('130');
+  const [settingsOpenPlayCapacity, setSettingsOpenPlayCapacity] = useState('16');
+  const [settingsOpenPlayCourtIds, setSettingsOpenPlayCourtIds] = useState('all');
+  const [settingsOpenPlayDays, setSettingsOpenPlayDays] = useState<string[]>(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']);
 
   // Financial Analytics & Reporting states
   const [timeFilter, setTimeFilter] = useState<'TODAY' | 'WEEK' | 'MONTH' | 'ALL'>('TODAY');
@@ -313,6 +325,18 @@ export default function AdminPage() {
           setSettingsClosureEndDate(settingsData.settings.closureEndDate || '');
           setSettingsClosureStartTime(settingsData.settings.closureStartTime || '');
           setSettingsClosureEndTime(settingsData.settings.closureEndTime || '');
+          setSettingsOpenPlayEnabled(settingsData.settings.openPlayEnabled !== 0);
+          setSettingsOpenPlayStartTime(settingsData.settings.openPlayStartTime || '05:00');
+          setSettingsOpenPlayEndTime(settingsData.settings.openPlayEndTime || '11:00');
+          setSettingsOpenPlayPrice(String(settingsData.settings.openPlayPrice !== undefined ? settingsData.settings.openPlayPrice : '130'));
+          setSettingsOpenPlayCapacity(String(settingsData.settings.openPlayCapacity !== undefined ? settingsData.settings.openPlayCapacity : '16'));
+          setSettingsOpenPlayCourtIds(settingsData.settings.openPlayCourtIds || 'all');
+          try {
+            const parsedDays = JSON.parse(settingsData.settings.openPlayDays || '[]');
+            setSettingsOpenPlayDays(Array.isArray(parsedDays) && parsedDays.length > 0 ? parsedDays : ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']);
+          } catch {
+            setSettingsOpenPlayDays(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']);
+          }
         }
       }
 
@@ -913,6 +937,13 @@ export default function AdminPage() {
           closureEndDate: settingsClosureEndDate,
           closureStartTime: settingsClosureStartTime,
           closureEndTime: settingsClosureEndTime,
+          openPlayEnabled: settingsOpenPlayEnabled ? 1 : 0,
+          openPlayStartTime: settingsOpenPlayStartTime,
+          openPlayEndTime: settingsOpenPlayEndTime,
+          openPlayPrice: parseFloat(settingsOpenPlayPrice) || 130,
+          openPlayCapacity: parseInt(settingsOpenPlayCapacity, 10) || 16,
+          openPlayCourtIds: settingsOpenPlayCourtIds,
+          openPlayDays: JSON.stringify(settingsOpenPlayDays),
           ...(settingsPin.trim() ? { adminPin: settingsPin.trim() } : {})
         })
       });
@@ -952,8 +983,12 @@ export default function AdminPage() {
     const matchesCourt = selectedCourtFilter === 'ALL' || b.courtId === selectedCourtFilter;
     const matchesStatus = selectedStatusFilter === 'ALL' || b.bookingStatus === selectedStatusFilter;
     const matchesDate = !selectedDateFilter || b.bookingDate === selectedDateFilter;
+    const matchesType =
+      bookingTypeFilter === 'ALL' ||
+      (bookingTypeFilter === 'OPEN_PLAY' && b.bookingType === 'OPEN_PLAY') ||
+      (bookingTypeFilter === 'STANDARD' && b.bookingType !== 'OPEN_PLAY');
 
-    return matchesSearch && matchesCourt && matchesStatus && matchesDate;
+    return matchesSearch && matchesCourt && matchesStatus && matchesDate && matchesType;
   });
 
   // Calculate statistics
@@ -1706,6 +1741,194 @@ export default function AdminPage() {
         {/* TAB 1: BOOKINGS */}
         {activeTab === 'bookings' && (
           <div className="space-y-4">
+            {/* Category Filter Tabs */}
+            <div className="flex flex-wrap items-center gap-2 pb-1">
+              <button
+                type="button"
+                onClick={() => setBookingTypeFilter('ALL')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  bookingTypeFilter === 'ALL'
+                    ? 'bg-lime-500 text-slate-950 shadow-sm'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                All Bookings ({bookings.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingTypeFilter('STANDARD')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  bookingTypeFilter === 'STANDARD'
+                    ? 'bg-lime-500 text-slate-950 shadow-sm'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                Regular Hourly Courts ({bookings.filter((b) => b.bookingType !== 'OPEN_PLAY').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBookingTypeFilter('OPEN_PLAY')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  bookingTypeFilter === 'OPEN_PLAY'
+                    ? 'bg-lime-500 text-slate-950 shadow-sm'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Morning Open Play Passes ({bookings.filter((b) => b.bookingType === 'OPEN_PLAY').length})</span>
+              </button>
+            </div>
+
+            {/* MORNING OPEN PLAY DAILY ROSTER CARD */}
+            {(() => {
+              const targetDate = rosterDate || todayStr || '';
+              const openPlayBookings = bookings.filter(
+                (b) => b.bookingType === 'OPEN_PLAY' && (!targetDate || b.bookingDate === targetDate) && b.bookingStatus !== 'CANCELLED'
+              );
+              const capacity = Number(settings?.openPlayCapacity || 16);
+              const spotsLeft = Math.max(0, capacity - openPlayBookings.length);
+              const totalRevenue = openPlayBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+
+              return (
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-lime-500/10 via-emerald-500/5 to-teal-500/10 border-2 border-lime-500/30 dark:border-lime-500/20 shadow-md">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-lime-500/20">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-lime-500 animate-pulse" />
+                        <h3 className="text-sm sm:text-base font-black text-slate-950 dark:text-white flex items-center gap-1.5">
+                          <span>🏓 Morning Open Play Daily Roster</span>
+                        </h3>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        Registered players for the 5:00 AM – 11:00 AM unlimited morning session.
+                      </p>
+                    </div>
+
+                    {/* Date Selector & Today Shortcut */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={targetDate}
+                        onChange={(e) => setRosterDate(e.target.value)}
+                        className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                      />
+                      {todayStr && targetDate !== todayStr && (
+                        <button
+                          type="button"
+                          onClick={() => setRosterDate(todayStr)}
+                          className="px-2.5 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 text-xs font-bold transition-all cursor-pointer"
+                        >
+                          Today
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Headcount & Revenue Summary */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 py-3">
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                        Registered Players
+                      </span>
+                      <span className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                        {openPlayBookings.length} / {capacity}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                        Remaining Spots
+                      </span>
+                      <span className={`text-base sm:text-lg font-black ${spotsLeft === 0 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {spotsLeft === 0 ? 'Sold Out' : `${spotsLeft} spots`}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                        Session Revenue
+                      </span>
+                      <span className="text-base sm:text-lg font-black text-lime-600 dark:text-lime-400">
+                        ₱{totalRevenue.toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 sm:p-3 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                        Session Hours
+                      </span>
+                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300 mt-1 block">
+                        5:00 AM – 11:00 AM
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Players List Table */}
+                  <div className="mt-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                    {openPlayBookings.length === 0 ? (
+                      <div className="p-5 text-center text-slate-400 dark:text-slate-500 text-xs">
+                        No players registered for Morning Open Play on {targetDate || 'this date'} yet.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs min-w-[550px]">
+                          <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider text-[10px]">
+                            <tr>
+                              <th className="py-2 px-3">#</th>
+                              <th className="py-2 px-3">Player Name</th>
+                              <th className="py-2 px-3">Phone</th>
+                              <th className="py-2 px-3">Booking Code</th>
+                              <th className="py-2 px-3">Amount & Payment</th>
+                              <th className="py-2 px-3">Payment Status</th>
+                              <th className="py-2 px-3 text-right">Desk Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {openPlayBookings.map((p, idx) => (
+                              <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                <td className="py-2 px-3 text-slate-400 font-mono">{idx + 1}</td>
+                                <td className="py-2 px-3 font-bold text-slate-900 dark:text-white">{p.clientName}</td>
+                                <td className="py-2 px-3 text-slate-600 dark:text-slate-400 font-mono">{p.clientPhone}</td>
+                                <td className="py-2 px-3 font-mono font-bold text-lime-600 dark:text-lime-400">{p.bookingCode}</td>
+                                <td className="py-2 px-3">
+                                  <span className="font-semibold text-slate-900 dark:text-white">₱{p.totalAmount}</span>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 ml-1">({p.paymentMethod})</span>
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                                    p.paymentStatus === 'PAID'
+                                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                                      : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                                  }`}>
+                                    {p.paymentStatus === 'PAID' ? 'Paid' : 'Unpaid (Collect ₱130)'}
+                                  </span>
+                                </td>
+                                <td className="py-2 px-3 text-right">
+                                  {p.paymentStatus !== 'PAID' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateBookingStatus(p.id, { paymentStatus: 'PAID', bookingStatus: 'CONFIRMED' })}
+                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-all cursor-pointer shadow-xs"
+                                    >
+                                      Mark Paid
+                                    </button>
+                                  ) : (
+                                    <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold flex items-center justify-end gap-1">
+                                      <Check className="w-3.5 h-3.5" /> Verified
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Filter toolbar */}
             <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row gap-2.5 sm:gap-3 items-stretch sm:items-center justify-between shadow-sm">
               <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2 sm:gap-3 flex-1">
@@ -1819,8 +2042,21 @@ export default function AdminPage() {
                           </td>
 
                           {/* Court */}
-                          <td className="py-3 px-3.5 font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                            {b.courtName || b.courtId}
+                          <td className="py-3 px-3.5 whitespace-nowrap">
+                            {b.bookingType === 'OPEN_PLAY' ? (
+                              <div>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-lime-500/20 text-lime-800 dark:text-lime-300 border border-lime-500/30">
+                                  Open Play Pass
+                                </span>
+                                <span className="text-[11px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                                  All Courts
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="font-medium text-slate-800 dark:text-slate-200">
+                                {b.courtName || b.courtId}
+                              </span>
+                            )}
                           </td>
 
                           {/* Date & Time */}
@@ -1834,6 +2070,9 @@ export default function AdminPage() {
                             </span>
                             <span className="text-slate-500 dark:text-slate-400 block text-[11px]">
                               {formatTime(b.startTime)} – {formatTime(b.endTime)}
+                              {b.bookingType === 'OPEN_PLAY' && (
+                                <span className="ml-1 text-lime-600 dark:text-lime-400 font-bold">(Unlimited)</span>
+                              )}
                             </span>
                           </td>
 
@@ -3183,6 +3422,240 @@ export default function AdminPage() {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Morning Player-Based Open Play (Unlimited Pass) */}
+              <div className="p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-gradient-to-br from-lime-500/10 via-emerald-500/5 to-teal-500/10 border-2 border-lime-500/30 dark:border-lime-500/20 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-lime-600 dark:text-lime-400" />
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                      Morning Player-Based Open Play (Unlimited Pass)
+                    </label>
+                  </div>
+                  <span className={`text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full font-black ${
+                    settingsOpenPlayEnabled
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-500 border border-slate-300 dark:border-slate-700'
+                  }`}>
+                    {settingsOpenPlayEnabled ? '● Enabled' : '● Disabled'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400">
+                  Allows individual players to buy an unlimited play pass for a designated morning time window (e.g. 5:00 AM – 11:00 AM for ₱130) across participating courts. Private hourly reservations are paused during these hours on participating courts.
+                </p>
+
+                {/* Master Switch */}
+                <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                      Enable Morning Open Play
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 block">
+                      When active, clients see the morning unlimited play pass card instead of individual 1-hour slots.
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer ml-3 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={settingsOpenPlayEnabled}
+                      onChange={(e) => setSettingsOpenPlayEnabled(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-lime-500"></div>
+                  </label>
+                </div>
+
+                {/* Time Range */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Start Hour
+                    </label>
+                    <select
+                      value={settingsOpenPlayStartTime}
+                      onChange={(e) => setSettingsOpenPlayStartTime(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500"
+                    >
+                      {HOUR_OPTIONS.map((h) => (
+                        <option key={h.value} value={h.value}>
+                          {h.label} ({h.value})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      End Hour (Resumes Normal Booking)
+                    </label>
+                    <select
+                      value={settingsOpenPlayEndTime}
+                      onChange={(e) => setSettingsOpenPlayEndTime(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500"
+                    >
+                      {HOUR_OPTIONS.map((h) => (
+                        <option key={h.value} value={h.value}>
+                          {h.label} ({h.value})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Pricing & Capacity */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Price per Player (PHP)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="130"
+                      value={settingsOpenPlayPrice}
+                      onChange={(e) => setSettingsOpenPlayPrice(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Player Capacity Cap (Max Spots)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      placeholder="16"
+                      value={settingsOpenPlayCapacity}
+                      onChange={(e) => setSettingsOpenPlayCapacity(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500 font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Participating Courts */}
+                <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Participating Courts
+                  </label>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Choose which courts are dedicated to Morning Open Play.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSettingsOpenPlayCourtIds('all')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        settingsOpenPlayCourtIds === 'all'
+                          ? 'bg-lime-500 text-slate-950 shadow-sm'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                      }`}
+                    >
+                      All Courts (Recommended)
+                    </button>
+                    {courts.map((court) => {
+                      let selectedIds: string[] = [];
+                      try {
+                        const parsed = JSON.parse(settingsOpenPlayCourtIds);
+                        if (Array.isArray(parsed)) selectedIds = parsed;
+                      } catch {}
+
+                      const isSelected = selectedIds.includes(court.id);
+                      return (
+                        <button
+                          key={court.id}
+                          type="button"
+                          onClick={() => {
+                            let next: string[];
+                            if (settingsOpenPlayCourtIds === 'all') {
+                              next = [court.id];
+                            } else if (isSelected) {
+                              next = selectedIds.filter((id) => id !== court.id);
+                              if (next.length === 0) next = ['all'];
+                            } else {
+                              next = [...selectedIds, court.id];
+                            }
+                            setSettingsOpenPlayCourtIds(next.includes('all') ? 'all' : JSON.stringify(next));
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            settingsOpenPlayCourtIds !== 'all' && isSelected
+                              ? 'bg-lime-500 text-slate-950 shadow-sm'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                          }`}
+                        >
+                          {court.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Active Days */}
+                <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    Active Days of the Week
+                  </label>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Select which days Morning Open Play runs.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[
+                      { code: 'MON', label: 'Mon' },
+                      { code: 'TUE', label: 'Tue' },
+                      { code: 'WED', label: 'Wed' },
+                      { code: 'THU', label: 'Thu' },
+                      { code: 'FRI', label: 'Fri' },
+                      { code: 'SAT', label: 'Sat' },
+                      { code: 'SUN', label: 'Sun' },
+                    ].map((d) => {
+                      const isActive = settingsOpenPlayDays.includes(d.code);
+                      return (
+                        <button
+                          key={d.code}
+                          type="button"
+                          onClick={() => {
+                            if (isActive) {
+                              if (settingsOpenPlayDays.length > 1) {
+                                setSettingsOpenPlayDays(settingsOpenPlayDays.filter((x) => x !== d.code));
+                              }
+                            } else {
+                              setSettingsOpenPlayDays([...settingsOpenPlayDays, d.code]);
+                            }
+                          }}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                            isActive
+                              ? 'bg-lime-500 text-slate-950 shadow-xs'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          {d.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Quick Presets */}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSettingsOpenPlayEnabled(true);
+                      setSettingsOpenPlayStartTime('05:00');
+                      setSettingsOpenPlayEndTime('11:00');
+                      setSettingsOpenPlayPrice('130');
+                      setSettingsOpenPlayCapacity('16');
+                      setSettingsOpenPlayCourtIds('all');
+                      setSettingsOpenPlayDays(['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN']);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-lime-500/15 border border-lime-500/30 text-[11px] font-bold text-lime-800 dark:text-lime-300 hover:bg-lime-500/25 transition-colors cursor-pointer"
+                  >
+                    + Default Preset (5 AM - 11 AM • ₱130 • 16 Spots • All Courts • Daily)
+                  </button>
+                </div>
               </div>
 
               {/* Admin Security */}

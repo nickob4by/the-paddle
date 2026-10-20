@@ -85,6 +85,7 @@ export interface Booking {
   gcashReference?: string;
   receiptUrl?: string;
   notes?: string;
+  bookingType?: 'STANDARD' | 'OPEN_PLAY';
   createdAt: string;
 }
 
@@ -104,6 +105,75 @@ export interface SystemSettings {
   closureEndDate?: string;
   closureStartTime?: string; // e.g. "05:00"
   closureEndTime?: string;   // e.g. "13:00"
+  openPlayEnabled?: number;   // 1 = enabled, 0 = disabled
+  openPlayStartTime?: string; // e.g. "05:00"
+  openPlayEndTime?: string;   // e.g. "11:00"
+  openPlayPrice?: number;     // e.g. 130
+  openPlayCapacity?: number;  // e.g. 16
+  openPlayCourtIds?: string;  // "all" or JSON array e.g. '["court-1"]'
+  openPlayDays?: string;      // JSON array e.g. '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
+}
+
+export function parseOpenPlayCourtIds(courtIds?: string): string[] {
+  if (!courtIds || courtIds === 'all') return ['all'];
+  try {
+    const parsed = JSON.parse(courtIds);
+    return Array.isArray(parsed) ? parsed : ['all'];
+  } catch {
+    return ['all'];
+  }
+}
+
+export function parseOpenPlayDays(days?: string): string[] {
+  const defaultDays = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+  if (!days) return defaultDays;
+  try {
+    const parsed = JSON.parse(days);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : defaultDays;
+  } catch {
+    return defaultDays;
+  }
+}
+
+export function isOpenPlayActiveOnDate(dateStr: string, settings?: Partial<SystemSettings> | null): boolean {
+  if (!settings) return false;
+  if (settings.openPlayEnabled === 0) return false;
+  if (!dateStr) return false;
+
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return false;
+  const dateObj = new Date(y, m - 1, d);
+  const dayIndex = dateObj.getDay(); // 0 = SUN, 1 = MON, ...
+  const dayCodes = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+  const currentDayCode = dayCodes[dayIndex];
+
+  const allowedDays = parseOpenPlayDays(settings.openPlayDays);
+  return allowedDays.includes(currentDayCode);
+}
+
+export function isCourtParticipatingInOpenPlay(courtId: string, settings?: Partial<SystemSettings> | null): boolean {
+  if (!settings || settings.openPlayEnabled === 0) return false;
+  const courtIds = parseOpenPlayCourtIds(settings.openPlayCourtIds);
+  if (courtIds.includes('all')) return true;
+  return courtIds.includes(courtId);
+}
+
+export function isHourInOpenPlayWindow(slotHourStr: string, settings?: Partial<SystemSettings> | null): boolean {
+  if (!settings || settings.openPlayEnabled === 0) return false;
+  const startTime = settings.openPlayStartTime || '05:00';
+  const endTime = settings.openPlayEndTime || '11:00';
+
+  const slotH = parseInt(slotHourStr.split(':')[0], 10);
+  const startH = parseInt(startTime.split(':')[0], 10);
+  const endH = parseInt(endTime.split(':')[0], 10);
+  if (Number.isNaN(slotH) || Number.isNaN(startH) || Number.isNaN(endH)) return false;
+
+  if (startH < endH) {
+    return slotH >= startH && slotH < endH;
+  } else {
+    // Crosses midnight if ever configured that way
+    return slotH >= startH || slotH < endH;
+  }
 }
 
 export function isHourInClosureRange(

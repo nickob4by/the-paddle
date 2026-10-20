@@ -2,14 +2,58 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { SystemSettings } from '@/lib/types';
 
+let schemaMigrated = false;
+async function ensureSettingsSchema() {
+  if (schemaMigrated) return;
+  const columnsToAdd = [
+    'ALTER TABLE settings ADD COLUMN openPlayEnabled INTEGER DEFAULT 1',
+    'ALTER TABLE settings ADD COLUMN openPlayStartTime TEXT DEFAULT "05:00"',
+    'ALTER TABLE settings ADD COLUMN openPlayEndTime TEXT DEFAULT "11:00"',
+    'ALTER TABLE settings ADD COLUMN openPlayPrice REAL DEFAULT 130',
+    'ALTER TABLE settings ADD COLUMN openPlayCapacity INTEGER DEFAULT 16',
+    'ALTER TABLE settings ADD COLUMN openPlayCourtIds TEXT DEFAULT "all"',
+    'ALTER TABLE settings ADD COLUMN openPlayDays TEXT DEFAULT "[\"MON\",\"TUE\",\"WED\",\"THU\",\"FRI\",\"SAT\",\"SUN\"]"'
+  ];
+
+  for (const sql of columnsToAdd) {
+    try {
+      await db.execute(sql);
+    } catch {
+      // Column already exists or table altered
+    }
+  }
+  schemaMigrated = true;
+}
+
+const SELECT_SETTINGS_COLS = `
+  id, gcashQrUrl, gcashAccountName, gcashNumber,
+  courtOpenTime, courtCloseTime, isBookingDisabled,
+  closureReason, closureBannerText, closureStartDate, closureEndDate, closureStartTime, closureEndTime,
+  openPlayEnabled, openPlayStartTime, openPlayEndTime, openPlayPrice, openPlayCapacity, openPlayCourtIds, openPlayDays,
+  updatedAt
+`;
+
 export async function GET(request: Request) {
   try {
+    await ensureSettingsSchema();
+
     const res = await db.execute({
-      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, closureStartTime, closureEndTime, updatedAt FROM settings WHERE id = ?',
+      sql: `SELECT ${SELECT_SETTINGS_COLS} FROM settings WHERE id = ?`,
       args: ['default']
     });
 
-    const settings = res.rows[0] as unknown as Omit<SystemSettings, 'adminPin'>;
+    const rawSettings = (res.rows[0] || {}) as any;
+    const settings: Omit<SystemSettings, 'adminPin'> = {
+      ...rawSettings,
+      openPlayEnabled: rawSettings.openPlayEnabled !== undefined && rawSettings.openPlayEnabled !== null ? Number(rawSettings.openPlayEnabled) : 1,
+      openPlayStartTime: rawSettings.openPlayStartTime || '05:00',
+      openPlayEndTime: rawSettings.openPlayEndTime || '11:00',
+      openPlayPrice: rawSettings.openPlayPrice !== undefined && rawSettings.openPlayPrice !== null ? Number(rawSettings.openPlayPrice) : 130,
+      openPlayCapacity: rawSettings.openPlayCapacity !== undefined && rawSettings.openPlayCapacity !== null ? Number(rawSettings.openPlayCapacity) : 16,
+      openPlayCourtIds: rawSettings.openPlayCourtIds || 'all',
+      openPlayDays: rawSettings.openPlayDays || '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
+    };
+
     return NextResponse.json(
       { success: true, settings },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
@@ -22,6 +66,8 @@ export async function GET(request: Request) {
 
 export async function PUT(request: Request) {
   try {
+    await ensureSettingsSchema();
+
     const body = await request.json();
     const {
       gcashQrUrl,
@@ -36,7 +82,14 @@ export async function PUT(request: Request) {
       closureStartDate,
       closureEndDate,
       closureStartTime,
-      closureEndTime
+      closureEndTime,
+      openPlayEnabled,
+      openPlayStartTime,
+      openPlayEndTime,
+      openPlayPrice,
+      openPlayCapacity,
+      openPlayCourtIds,
+      openPlayDays
     } = body;
 
     const currentRes = await db.execute({ sql: 'SELECT * FROM settings WHERE id = ?', args: ['default'] });
@@ -61,6 +114,13 @@ export async function PUT(request: Request) {
                 closureEndDate = COALESCE(?, closureEndDate),
                 closureStartTime = COALESCE(?, closureStartTime),
                 closureEndTime = COALESCE(?, closureEndTime),
+                openPlayEnabled = COALESCE(?, openPlayEnabled),
+                openPlayStartTime = COALESCE(?, openPlayStartTime),
+                openPlayEndTime = COALESCE(?, openPlayEndTime),
+                openPlayPrice = COALESCE(?, openPlayPrice),
+                openPlayCapacity = COALESCE(?, openPlayCapacity),
+                openPlayCourtIds = COALESCE(?, openPlayCourtIds),
+                openPlayDays = COALESCE(?, openPlayDays),
                 updatedAt = ?
             WHERE id = ?`,
       args: [
@@ -77,18 +137,41 @@ export async function PUT(request: Request) {
         closureEndDate !== undefined ? closureEndDate : null,
         closureStartTime !== undefined ? closureStartTime : null,
         closureEndTime !== undefined ? closureEndTime : null,
+        openPlayEnabled !== undefined ? Number(openPlayEnabled) : null,
+        openPlayStartTime !== undefined ? openPlayStartTime : null,
+        openPlayEndTime !== undefined ? openPlayEndTime : null,
+        openPlayPrice !== undefined ? Number(openPlayPrice) : null,
+        openPlayCapacity !== undefined ? Number(openPlayCapacity) : null,
+        openPlayCourtIds !== undefined ? openPlayCourtIds : null,
+        openPlayDays !== undefined ? openPlayDays : null,
         updatedAt,
         'default'
       ]
     });
 
     const updatedRes = await db.execute({
-      sql: 'SELECT id, gcashQrUrl, gcashAccountName, gcashNumber, courtOpenTime, courtCloseTime, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, closureStartTime, closureEndTime, updatedAt FROM settings WHERE id = ?',
+      sql: `SELECT ${SELECT_SETTINGS_COLS} FROM settings WHERE id = ?`,
       args: ['default']
     });
 
+    const rawSettings = (updatedRes.rows[0] || {}) as any;
+    const settings: Omit<SystemSettings, 'adminPin'> = {
+      ...rawSettings,
+      openPlayEnabled: rawSettings.openPlayEnabled !== undefined && rawSettings.openPlayEnabled !== null ? Number(rawSettings.openPlayEnabled) : 1,
+      openPlayStartTime: rawSettings.openPlayStartTime || '05:00',
+      openPlayEndTime: rawPlaySettingsEndTime(rawSettings),
+      openPlayPrice: rawSettings.openPlayPrice !== undefined && rawSettings.openPlayPrice !== null ? Number(rawSettings.openPlayPrice) : 130,
+      openPlayCapacity: rawSettings.openPlayCapacity !== undefined && rawSettings.openPlayCapacity !== null ? Number(rawSettings.openPlayCapacity) : 16,
+      openPlayCourtIds: rawSettings.openPlayCourtIds || 'all',
+      openPlayDays: rawSettings.openPlayDays || '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
+    };
+
+    function rawPlaySettingsEndTime(s: any) {
+      return s.openPlayEndTime || '11:00';
+    }
+
     return NextResponse.json(
-      { success: true, settings: updatedRes.rows[0] },
+      { success: true, settings },
       { headers: { 'Cache-Control': 'no-store, max-age=0' } }
     );
   } catch (error) {

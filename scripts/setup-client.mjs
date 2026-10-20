@@ -122,6 +122,7 @@ const SCHEMA_STATEMENTS = [
     gcashReference TEXT,
     receiptUrl TEXT,
     notes TEXT,
+    bookingType TEXT DEFAULT "STANDARD",
     createdAt TEXT NOT NULL
   );`,
 
@@ -140,7 +141,14 @@ const SCHEMA_STATEMENTS = [
     closureStartDate TEXT DEFAULT "",
     closureEndDate TEXT DEFAULT "",
     closureStartTime TEXT DEFAULT "",
-    closureEndTime TEXT DEFAULT ""
+    closureEndTime TEXT DEFAULT "",
+    openPlayEnabled INTEGER DEFAULT 1,
+    openPlayStartTime TEXT DEFAULT "05:00",
+    openPlayEndTime TEXT DEFAULT "11:00",
+    openPlayPrice REAL DEFAULT 130,
+    openPlayCapacity INTEGER DEFAULT 16,
+    openPlayCourtIds TEXT DEFAULT "all",
+    openPlayDays TEXT DEFAULT "[\"MON\",\"TUE\",\"WED\",\"THU\",\"FRI\",\"SAT\",\"SUN\"]"
   );`,
 
   `CREATE TABLE IF NOT EXISTS booked_slots (

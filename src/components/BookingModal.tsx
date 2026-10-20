@@ -32,6 +32,7 @@ interface BookingModalProps {
     endTime: string;
     durationHours: number;
     totalAmount: number;
+    bookingType?: 'STANDARD' | 'OPEN_PLAY';
   } | null;
   onBookingSuccess: (booking: Booking) => void;
 }
@@ -183,7 +184,8 @@ export default function BookingModal({
           endTime: bookingDetails.endTime,
           paymentMethod,
           receiptUrl,
-          notes: notes.trim()
+          notes: notes.trim(),
+          bookingType: bookingDetails.bookingType || 'STANDARD'
         })
       });
 
@@ -202,6 +204,8 @@ export default function BookingModal({
     }
   };
 
+  const isOpenPlay = bookingDetails.bookingType === 'OPEN_PLAY';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/75 dark:bg-slate-950/85 backdrop-blur-sm overflow-hidden transition-colors">
       {/* Modal Container */}
@@ -211,10 +215,12 @@ export default function BookingModal({
         <div className="flex-shrink-0 px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm z-10">
           <div>
             <h3 className="text-base sm:text-xl font-black text-slate-950 dark:text-white">
-              {confirmedBooking ? 'Reservation Confirmed!' : 'Complete Your Reservation'}
+              {confirmedBooking
+                ? isOpenPlay ? 'Open Play Pass Confirmed!' : 'Reservation Confirmed!'
+                : isOpenPlay ? 'Morning Open Play Pass' : 'Complete Your Reservation'}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[220px] sm:max-w-none">
-              {siteConfig.brandName} • {bookingDetails.court.name}
+              {siteConfig.brandName} • {isOpenPlay ? 'Unlimited Morning Play (5:00 AM – 11:00 AM)' : bookingDetails.court.name}
             </p>
           </div>
           <button
@@ -240,9 +246,11 @@ export default function BookingModal({
               <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 text-xs">
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 block mb-0.5 flex items-center gap-1 text-[11px]">
-                    <MapPin className="w-3 h-3 text-lime-600 dark:text-lime-400" /> Court
+                    <MapPin className="w-3 h-3 text-lime-600 dark:text-lime-400" /> {isOpenPlay ? 'Pass' : 'Court'}
                   </span>
-                  <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate block">{bookingDetails.court.name}</span>
+                  <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate block">
+                    {isOpenPlay ? 'All Courts (Open Play)' : bookingDetails.court.name}
+                  </span>
                 </div>
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 block mb-0.5 flex items-center gap-1 text-[11px]">
@@ -257,12 +265,14 @@ export default function BookingModal({
                     <Clock className="w-3 h-3 text-lime-600 dark:text-lime-400" /> Time
                   </span>
                   <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
-                    {formatTime(bookingDetails.startTime)} – {formatTime(bookingDetails.endTime)}
+                    {isOpenPlay ? '5:00 AM – 11:00 AM' : `${formatTime(bookingDetails.startTime)} – ${formatTime(bookingDetails.endTime)}`}
                   </span>
                 </div>
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">Total Amount</span>
-                  <span className="font-black text-lime-600 dark:text-lime-400 text-sm sm:text-base">₱{bookingDetails.totalAmount.toLocaleString()}</span>
+                  <span className="font-black text-lime-600 dark:text-lime-400 text-sm sm:text-base">
+                    ₱{bookingDetails.totalAmount.toLocaleString()} {isOpenPlay ? '(1 Pass)' : ''}
+                  </span>
                 </div>
               </div>
 

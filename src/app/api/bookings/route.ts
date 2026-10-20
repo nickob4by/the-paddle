@@ -1,15 +1,38 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { Booking, Court, getSlotRate, isHourInClosureRange } from '@/lib/types';
+import {
+  Booking,
+  Court,
+  SystemSettings,
+  getSlotRate,
+  isHourInClosureRange,
+  isOpenPlayActiveOnDate,
+  isCourtParticipatingInOpenPlay,
+  isHourInOpenPlayWindow
+} from '@/lib/types';
 import crypto from 'crypto';
+
+let schemaMigrated = false;
+async function ensureBookingsSchema() {
+  if (schemaMigrated) return;
+  try {
+    await db.execute('ALTER TABLE bookings ADD COLUMN bookingType TEXT DEFAULT "STANDARD"');
+  } catch {
+    // Column already exists or table altered
+  }
+  schemaMigrated = true;
+}
 
 export async function GET(request: Request) {
   try {
+    await ensureBookingsSchema();
+
     const { searchParams } = new URL(request.url);
     const date = searchParams.get('date');
     const courtId = searchParams.get('courtId');
     const status = searchParams.get('status');
     const search = searchParams.get('search');
+    const type = searchParams.get('type');
 
     let query = `
       SELECT b.*, c.name as courtName
@@ -19,14 +42,26 @@ export async function GET(request: Request) {
     `;
     const params: (string | number)[] = [];
 
-    if (date) {
-      query += ' AND b.bookingDate = ?';
-      params.push(date);
+    // If both courtId and date are specified (e.g. from the client calendar slot picker),
+    // include both private bookings for this court AND all open play bookings on that date
+    // so the client can calculate live open play spot availability accurately.
+    if (courtId && date) {
+      query += ' AND b.bookingDate = ? AND (b.courtId = ? OR b.bookingType = "OPEN_PLAY")';
+      params.push(date, courtId);
+    } else {
+      if (date) {
+        query += ' AND b.bookingDate = ?';
+        params.push(date);
+      }
+      if (courtId) {
+        query += ' AND b.courtId = ?';
+        params.push(courtId);
+      }
     }
 
-    if (courtId) {
-      query += ' AND b.courtId = ?';
-      params.push(courtId);
+    if (type) {
+      query += ' AND b.bookingType = ?';
+      params.push(type);
     }
 
     if (status && status !== 'ALL') {
@@ -56,6 +91,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    await ensureBookingsSchema();
+
     const body = await request.json();
     const {
       courtId,
@@ -68,8 +105,11 @@ export async function POST(request: Request) {
       paymentMethod,
       gcashReference = '',
       receiptUrl = '',
-      notes = ''
+      notes = '',
+      bookingType = 'STANDARD'
     } = body;
+
+    const isPass = bookingType === 'OPEN_PLAY';
 
     // Validation
     if (!courtId || !clientName || !clientPhone || !bookingDate || !startTime || !endTime || !paymentMethod) {
@@ -89,7 +129,6 @@ export async function POST(request: Request) {
 
     // Validate that booking is not in the past (using Philippine / local time UTC+8)
     const nowUtc = new Date();
-    // Offset for UTC+8 (Philippines standard time)
     const phTime = new Date(nowUtc.getTime() + (8 * 60 + nowUtc.getTimezoneOffset()) * 60000);
     const phYear = phTime.getFullYear();
     const phMonth = String(phTime.getMonth() + 1).padStart(2, '0');
@@ -99,7 +138,7 @@ export async function POST(request: Request) {
 
     if (bookingDate < phTodayStr) {
       return NextResponse.json(
-        { success: false, error: 'Cannot book courts for past dates.' },
+        { success: false, error: 'Cannot book for past dates.' },
         { status: 400 }
       );
     }
@@ -133,94 +172,157 @@ export async function POST(request: Request) {
       );
     }
 
-    // Calculate discrete hour slots and total amount based on time-range pricing
-    const startHourInt = parseInt(startTime.split(':')[0], 10);
-    let endHourInt = parseInt(endTime.split(':')[0], 10);
-    if (endTime === '24:00') endHourInt = 24;
+    // Fetch system settings for closures and open play configuration
+    const settingsRes = await db.execute({
+      sql: `SELECT id, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate,
+                   closureStartTime, closureEndTime, openPlayEnabled, openPlayStartTime, openPlayEndTime,
+                   openPlayPrice, openPlayCapacity, openPlayCourtIds, openPlayDays
+            FROM settings WHERE id = ?`,
+      args: ['default']
+    });
 
-    const slotHours: string[] = [];
-    let totalAmount = 0;
+    const settings: SystemSettings = (settingsRes.rows[0] || {}) as any;
 
-    if (startHourInt < endHourInt) {
-      for (let h = startHourInt; h < endHourInt; h++) {
-        const slotStr = `${h.toString().padStart(2, '0')}:00`;
-        slotHours.push(slotStr);
-        totalAmount += getSlotRate(court, slotStr);
+    // Check facility closures
+    const isGloballyDisabled = Number(settings.isBookingDisabled) === 1;
+    const isDateClosed = Boolean(
+      (settings.closureStartDate && settings.closureEndDate && bookingDate >= settings.closureStartDate && bookingDate <= settings.closureEndDate) ||
+      (settings.closureStartDate && !settings.closureEndDate && bookingDate === settings.closureStartDate)
+    );
+
+    if (isGloballyDisabled || isDateClosed) {
+      const hasTimeWindow = Boolean(settings.closureStartTime && settings.closureEndTime && settings.closureStartTime !== settings.closureEndTime);
+      let overlapsClosure = true;
+      if (hasTimeWindow) {
+        overlapsClosure = isHourInClosureRange(startTime, settings.closureStartTime, settings.closureEndTime);
       }
-    } else {
-      // Overnight booking crossing midnight (e.g. 23:00 to 02:00)
-      for (let h = startHourInt; h < 24; h++) {
-        const slotStr = `${h.toString().padStart(2, '0')}:00`;
-        slotHours.push(slotStr);
-        totalAmount += getSlotRate(court, slotStr);
-      }
-      for (let h = 0; h < endHourInt; h++) {
-        const slotStr = `${h.toString().padStart(2, '0')}:00`;
-        slotHours.push(slotStr);
-        totalAmount += getSlotRate(court, slotStr);
+      if (overlapsClosure) {
+        const notice = settings.closureBannerText || settings.closureReason || 'The facility is temporarily closed for maintenance or vacation.';
+        return NextResponse.json({ success: false, error: `Bookings are unavailable for this time: ${notice}` }, { status: 400 });
       }
     }
 
-    // Check if facility-wide booking is disabled or in scheduled vacation/closure
-    const settingsRes = await db.execute({
-      sql: 'SELECT isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate, closureStartTime, closureEndTime FROM settings WHERE id = ?',
-      args: ['default']
-    });
-    if (settingsRes.rows.length > 0) {
-      const s = settingsRes.rows[0] as any;
-      const isGloballyDisabled = Number(s.isBookingDisabled) === 1;
-      const isDateClosed = Boolean(
-        (s.closureStartDate && s.closureEndDate && bookingDate >= s.closureStartDate && bookingDate <= s.closureEndDate) ||
-        (s.closureStartDate && !s.closureEndDate && bookingDate === s.closureStartDate)
-      );
+    let finalTotalAmount = 0;
+    let finalDurationHours = 1;
+    let finalStartTime = startTime;
+    let finalEndTime = endTime;
 
-      if (isGloballyDisabled || isDateClosed) {
-        const hasTimeWindow = Boolean(s.closureStartTime && s.closureEndTime && s.closureStartTime !== s.closureEndTime);
-        let overlapsClosureWindow = true;
+    if (isPass) {
+      // ----------------------------------------------------
+      // OPEN PLAY BOOKING LOGIC
+      // ----------------------------------------------------
+      if (!isOpenPlayActiveOnDate(bookingDate, settings)) {
+        return NextResponse.json(
+          { success: false, error: 'Morning Open Play is not active on the selected date.' },
+          { status: 400 }
+        );
+      }
 
-        if (hasTimeWindow) {
-          overlapsClosureWindow = slotHours.some((slot) =>
-            isHourInClosureRange(slot, s.closureStartTime, s.closureEndTime)
-          );
+      if (!isCourtParticipatingInOpenPlay(courtId, settings)) {
+        return NextResponse.json(
+          { success: false, error: 'Selected court does not participate in Morning Open Play.' },
+          { status: 400 }
+        );
+      }
+
+      const capacity = Number(settings.openPlayCapacity || 16);
+      const openPlayPrice = Number(settings.openPlayPrice !== undefined ? settings.openPlayPrice : 130);
+      finalStartTime = settings.openPlayStartTime || '05:00';
+      finalEndTime = settings.openPlayEndTime || '11:00';
+
+      // Check current headcount
+      const countRes = await db.execute({
+        sql: `SELECT COUNT(*) as count FROM bookings
+              WHERE bookingDate = ? AND bookingType = 'OPEN_PLAY' AND bookingStatus != 'CANCELLED'`,
+        args: [bookingDate]
+      });
+      const currentHeadcount = Number(countRes.rows[0]?.count || 0);
+
+      if (currentHeadcount >= capacity) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `The Morning Open Play session for ${bookingDate} is completely sold out (${capacity}/${capacity} spots taken).`
+          },
+          { status: 409 }
+        );
+      }
+
+      finalTotalAmount = openPlayPrice;
+      const startH = parseInt(finalStartTime.split(':')[0], 10);
+      const endH = parseInt(finalEndTime.split(':')[0], 10);
+      finalDurationHours = endH > startH ? endH - startH : 6;
+    } else {
+      // ----------------------------------------------------
+      // STANDARD PRIVATE HOURLY BOOKING LOGIC
+      // ----------------------------------------------------
+      const isOpenPlayDay = isOpenPlayActiveOnDate(bookingDate, settings);
+      const isCourtOpenPlay = isCourtParticipatingInOpenPlay(courtId, settings);
+
+      const startHourInt = parseInt(startTime.split(':')[0], 10);
+      let endHourInt = parseInt(endTime.split(':')[0], 10);
+      if (endTime === '24:00') endHourInt = 24;
+
+      const slotHours: string[] = [];
+      if (startHourInt < endHourInt) {
+        for (let h = startHourInt; h < endHourInt; h++) {
+          slotHours.push(`${h.toString().padStart(2, '0')}:00`);
         }
+      } else {
+        for (let h = startHourInt; h < 24; h++) {
+          slotHours.push(`${h.toString().padStart(2, '0')}:00`);
+        }
+        for (let h = 0; h < endHourInt; h++) {
+          slotHours.push(`${h.toString().padStart(2, '0')}:00`);
+        }
+      }
 
-        if (overlapsClosureWindow) {
-          const timeWindowNotice = hasTimeWindow ? ` (Closed between ${s.closureStartTime} and ${s.closureEndTime})` : '';
-          const notice = s.closureBannerText || s.closureReason || `The facility is temporarily closed${timeWindowNotice}.`;
+      // Check if standard booking collides with Morning Open Play hours on participating court
+      if (isOpenPlayDay && isCourtOpenPlay) {
+        const collidesWithOpenPlay = slotHours.some((slot) => isHourInOpenPlayWindow(slot, settings));
+        if (collidesWithOpenPlay) {
+          const openStart = settings.openPlayStartTime || '05:00';
+          const openEnd = settings.openPlayEndTime || '11:00';
           return NextResponse.json(
-            { success: false, error: `Bookings are unavailable for this time: ${notice}` },
+            {
+              success: false,
+              error: `This court is reserved for Morning Open Play (${openStart} - ${openEnd}). Private reservations are not available during these hours. Please book an Open Play Pass or choose a private slot from ${openEnd} onwards.`
+            },
             { status: 400 }
           );
         }
       }
-    }
 
-    const durationHours = Math.max(slotHours.length, 1);
-    if (totalAmount === 0 && durationHours > 0) {
-      totalAmount = durationHours * Number(court.hourlyRate);
-    }
+      // Calculate total amount based on time-range pricing
+      let calcAmount = 0;
+      for (const slotStr of slotHours) {
+        calcAmount += getSlotRate(court, slotStr);
+      }
+      finalDurationHours = Math.max(slotHours.length, 1);
+      finalTotalAmount = calcAmount > 0 ? calcAmount : finalDurationHours * Number(court.hourlyRate);
 
-    // Overlap / Collision Check using discrete hour slots
-    if (slotHours.length > 0) {
-      const placeholders = slotHours.map(() => '?').join(', ');
-      const overlapping = await db.execute({
-        sql: `SELECT bs.hourSlot, b.bookingCode FROM booked_slots bs
-              JOIN bookings b ON bs.bookingId = b.id
-              WHERE bs.courtId = ?
-                AND bs.bookingDate = ?
-                AND b.bookingStatus != 'CANCELLED'
-                AND bs.hourSlot IN (${placeholders})`,
-        args: [courtId, bookingDate, ...slotHours]
-      });
+      // Overlap / Collision Check against booked_slots
+      if (slotHours.length > 0) {
+        const placeholders = slotHours.map(() => '?').join(', ');
+        const overlapping = await db.execute({
+          sql: `SELECT bs.hourSlot, b.bookingCode FROM booked_slots bs
+                JOIN bookings b ON bs.bookingId = b.id
+                WHERE bs.courtId = ?
+                  AND bs.bookingDate = ?
+                  AND b.bookingStatus != 'CANCELLED'
+                  AND bs.hourSlot IN (${placeholders})`,
+          args: [courtId, bookingDate, ...slotHours]
+        });
 
-      if (overlapping.rows.length > 0) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'The selected time slot has already been reserved. Please pick another time or court.'
-          },
-          { status: 409 }
-        );
+        if (overlapping.rows.length > 0) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: 'The selected time slot has already been reserved. Please pick another time or court.'
+            },
+            { status: 409 }
+          );
+        }
       }
     }
 
@@ -233,21 +335,18 @@ export async function POST(request: Request) {
     let bookingStatus = paymentMethod === 'GCASH' ? 'PENDING' : 'CONFIRMED';
     let paymentStatus = paymentMethod === 'GCASH' ? 'VERIFICATION_PENDING' : 'UNPAID';
 
-    // Build atomic transaction queries:
-    // 1. Insert master booking
-    // 2. Insert each 1-hour slot into booked_slots with UNIQUE(courtId, bookingDate, hourSlot)
     const batchStatements: Array<{ sql: string; args: any[] }> = [
       {
         sql: `INSERT INTO bookings (
                 id, bookingCode, courtId, clientName, clientEmail, clientPhone,
                 bookingDate, startTime, endTime, durationHours, totalAmount,
                 paymentMethod, paymentStatus, bookingStatus, gcashReference,
-                receiptUrl, notes, createdAt
+                receiptUrl, notes, bookingType, createdAt
               ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?, ?
+                ?, ?, ?, ?
               )`,
         args: [
           id,
@@ -257,34 +356,57 @@ export async function POST(request: Request) {
           (clientEmail || '').trim(),
           clientPhone.trim(),
           bookingDate,
-          startTime,
-          endTime,
-          durationHours,
-          totalAmount,
+          finalStartTime,
+          finalEndTime,
+          finalDurationHours,
+          finalTotalAmount,
           paymentMethod,
           paymentStatus,
           bookingStatus,
           gcashReference.trim(),
           receiptUrl,
           notes.trim(),
+          isPass ? 'OPEN_PLAY' : 'STANDARD',
           createdAt
         ]
       }
     ];
 
-    for (const slot of slotHours) {
-      batchStatements.push({
-        sql: `INSERT INTO booked_slots (id, bookingId, courtId, bookingDate, hourSlot, createdAt)
-              VALUES (?, ?, ?, ?, ?, ?)`,
-        args: [
-          `slot-${crypto.randomUUID().slice(0, 8)}`,
-          id,
-          courtId,
-          bookingDate,
-          slot,
-          createdAt
-        ]
-      });
+    // CRITICAL: Only insert individual discrete hour slots into booked_slots for STANDARD private reservations!
+    // Open Play passes DO NOT insert into booked_slots to prevent UNIQUE constraint failure when multiple players book.
+    if (!isPass) {
+      const startHourInt = parseInt(startTime.split(':')[0], 10);
+      let endHourInt = parseInt(endTime.split(':')[0], 10);
+      if (endTime === '24:00') endHourInt = 24;
+
+      const slotHours: string[] = [];
+      if (startHourInt < endHourInt) {
+        for (let h = startHourInt; h < endHourInt; h++) {
+          slotHours.push(`${h.toString().padStart(2, '0')}:00`);
+        }
+      } else {
+        for (let h = startHourInt; h < 24; h++) {
+          slotHours.push(`${h.toString().padStart(2, '0')}:00`);
+        }
+        for (let h = 0; h < endHourInt; h++) {
+          slotHours.push(`${h.toString().padStart(2, '0')}:00`);
+        }
+      }
+
+      for (const slot of slotHours) {
+        batchStatements.push({
+          sql: `INSERT INTO booked_slots (id, bookingId, courtId, bookingDate, hourSlot, createdAt)
+                VALUES (?, ?, ?, ?, ?, ?)`,
+          args: [
+            `slot-${crypto.randomUUID().slice(0, 8)}`,
+            id,
+            courtId,
+            bookingDate,
+            slot,
+            createdAt
+          ]
+        });
+      }
     }
 
     try {
@@ -313,7 +435,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: 'Court booking created successfully!',
+      message: isPass ? 'Morning Open Play pass booked successfully!' : 'Court booking created successfully!',
       booking: newBookingRes.rows[0]
     });
   } catch (error: any) {

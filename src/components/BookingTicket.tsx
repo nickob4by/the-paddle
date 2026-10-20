@@ -86,8 +86,12 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
               className="h-8 sm:h-9 w-auto object-contain hidden dark:block"
             />
           </div>
-          <span className="text-[10px] font-mono tracking-wider uppercase px-2 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-semibold">
-            OFFICIAL PASS
+          <span className={`text-[10px] font-mono tracking-wider uppercase px-2 py-0.5 rounded font-semibold ${
+            booking.bookingType === 'OPEN_PLAY'
+              ? 'bg-lime-500/20 text-lime-800 dark:text-lime-300 border border-lime-500/30'
+              : 'bg-slate-200/60 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+          }`}>
+            {booking.bookingType === 'OPEN_PLAY' ? 'MORNING OPEN PLAY PASS' : 'OFFICIAL PASS'}
           </span>
         </div>
 
@@ -132,9 +136,11 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
         <div className="grid grid-cols-2 gap-3 sm:gap-4 py-3 sm:py-4 text-xs">
           <div>
             <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1 mb-1">
-              <MapPin className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Court
+              <MapPin className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> {booking.bookingType === 'OPEN_PLAY' ? 'Pass Type' : 'Court'}
             </span>
-            <span className="text-slate-900 dark:text-white font-bold text-xs sm:text-sm">{booking.courtName || 'Pickleball Court'}</span>
+            <span className="text-slate-900 dark:text-white font-bold text-xs sm:text-sm">
+              {booking.bookingType === 'OPEN_PLAY' ? 'All Courts (Open Play)' : (booking.courtName || 'Pickleball Court')}
+            </span>
           </div>
 
           <div>
@@ -156,7 +162,9 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
               <Clock className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Play Time
             </span>
             <span className="text-slate-900 dark:text-white font-bold text-xs sm:text-sm">
-              {formatTime(booking.startTime)} – {formatTime(booking.endTime)} ({booking.durationHours} hr{booking.durationHours > 1 ? 's' : ''})
+              {booking.bookingType === 'OPEN_PLAY'
+                ? `${formatTime(booking.startTime)} – ${formatTime(booking.endTime)} (Unlimited)`
+                : `${formatTime(booking.startTime)} – ${formatTime(booking.endTime)} (${booking.durationHours} hr${booking.durationHours > 1 ? 's' : ''})`}
             </span>
           </div>
 
@@ -165,7 +173,7 @@ export default function BookingTicket({ booking, onClose }: BookingTicketProps) 
               <CreditCard className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" /> Payment
             </span>
             <span className="text-slate-900 dark:text-white font-bold text-xs sm:text-sm">
-              ₱{booking.totalAmount.toLocaleString()} via {booking.paymentMethod}
+              ₱{booking.totalAmount.toLocaleString()} via {booking.paymentMethod} {booking.bookingType === 'OPEN_PLAY' ? '(Pass)' : ''}
             </span>
             <span className="text-[10px] text-slate-500 dark:text-slate-400 block">
               {booking.paymentMethod === 'GCASH'
