@@ -15,6 +15,7 @@ import {
   getActiveScheduledPriceChange,
   getEffectiveOpenPlayPrice,
   getEffectiveCourtHourlyRate,
+  getEffectiveCourtEveningRate,
   getEffectiveSlotRate
 } from '@/lib/types';
 import {
@@ -741,8 +742,10 @@ export default function CalendarSlotPicker({
               <div>
                 <strong className="font-bold text-amber-700 dark:text-amber-300">{activePriceChange.name}:</strong>{' '}
                 <span>
-                  {activePriceChange.courtHourlyRate !== undefined && `Court rate ₱${activePriceChange.courtHourlyRate}/hr`}
-                  {activePriceChange.courtHourlyRate !== undefined && activePriceChange.openPlayPrice !== undefined && ' • '}
+                  {activePriceChange.courtHourlyRate !== undefined && `Morning/Daytime ₱${activePriceChange.courtHourlyRate}/hr`}
+                  {activePriceChange.courtHourlyRate !== undefined && activePriceChange.courtEveningRate !== undefined && ' • '}
+                  {activePriceChange.courtEveningRate !== undefined && `Evening ₱${activePriceChange.courtEveningRate}/hr`}
+                  {(activePriceChange.courtHourlyRate !== undefined || activePriceChange.courtEveningRate !== undefined) && activePriceChange.openPlayPrice !== undefined && ' • '}
                   {activePriceChange.openPlayPrice !== undefined && `Morning Open Play ₱${activePriceChange.openPlayPrice}/player`}
                 </span>
               </div>
@@ -884,7 +887,7 @@ export default function CalendarSlotPicker({
                       </span>
                     </div>
                     <span className="text-[11px] sm:text-xs font-bold text-slate-500 dark:text-slate-400">
-                      ₱{selectedCourt?.hourlyRate}/hr
+                      ₱{getEffectiveCourtHourlyRate(selectedDate, selectedCourt, { scheduledPriceChanges })}/hr
                     </span>
                   </div>
                 )}
@@ -923,7 +926,7 @@ export default function CalendarSlotPicker({
                       </span>
                     </div>
                     <span className="text-xs font-black text-lime-600 dark:text-lime-400">
-                      ₱{selectedCourt?.hourlyRate}/hr
+                      ₱{getEffectiveCourtHourlyRate(selectedDate, selectedCourt, { scheduledPriceChanges })}/hr
                     </span>
                   </div>
                 )}

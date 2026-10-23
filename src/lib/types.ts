@@ -118,12 +118,13 @@ export interface SystemSettings {
 
 export interface ScheduledPriceChange {
   id: string;
-  name: string;             // e.g. "December Rate Adjustment"
-  startDate: string;        // "YYYY-MM-DD"
-  endDate?: string;         // "YYYY-MM-DD" (optional: if omitted, applies indefinitely from startDate)
-  isActive: number;         // 1 = active, 0 = inactive
-  courtHourlyRate?: number; // Uniform court hourly rate in PHP
-  openPlayPrice?: number;   // Unli play price in PHP
+  name: string;              // e.g. "December Rate Adjustment"
+  startDate: string;         // "YYYY-MM-DD"
+  endDate?: string;          // "YYYY-MM-DD" (optional: if omitted, applies indefinitely from startDate)
+  isActive?: number;         // Optional for backwards compatibility (1 = active, 0 = inactive)
+  courtHourlyRate?: number;  // Morning / Daytime court hourly rate in PHP
+  courtEveningRate?: number; // Evening court hourly rate in PHP
+  openPlayPrice?: number;    // Unli morning play price in PHP
   createdAt: string;
 }
 
@@ -147,13 +148,26 @@ export function getActiveScheduledPriceChange(
 ): ScheduledPriceChange | null {
   if (!dateStr) return null;
   const list = parseScheduledPriceChanges(rules);
-  return list.find((rule) => {
-    if (Number(rule.isActive) === 0) return false;
+  const matched = list.filter((rule) => {
+    if (rule.isActive !== undefined && Number(rule.isActive) === 0) return false;
     if (!rule.startDate) return false;
     const start = rule.startDate;
     const end = rule.endDate || '9999-12-31';
     return dateStr >= start && dateStr <= end;
-  }) || null;
+  });
+
+  if (matched.length === 0) return null;
+  if (matched.length === 1) return matched[0];
+
+  // When rules overlap, sort by date span (narrower specific range first), then newest
+  return matched.sort((a, b) => {
+    const endA = a.endDate || '9999-12-31';
+    const endB = b.endDate || '9999-12-31';
+    const spanA = new Date(endA).getTime() - new Date(a.startDate).getTime();
+    const spanB = new Date(endB).getTime() - new Date(b.startDate).getTime();
+    if (spanA !== spanB) return spanA - spanB;
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  })[0];
 }
 
 export function getEffectiveOpenPlayPrice(
@@ -184,6 +198,22 @@ export function getEffectiveCourtHourlyRate(
   return baseRate;
 }
 
+export function getEffectiveCourtEveningRate(
+  dateStr: string,
+  court: Court | null | undefined,
+  settings?: Partial<SystemSettings> | null | undefined
+): number | null {
+  if (!court) return null;
+  const rules = parsePricingRules(court.pricingRules);
+  const baseEveningRate = rules.length > 0 && rules[0].rate !== undefined ? Number(rules[0].rate) : null;
+  if (!dateStr || !settings?.scheduledPriceChanges) return baseEveningRate;
+  const matched = getActiveScheduledPriceChange(dateStr, settings.scheduledPriceChanges);
+  if (matched && matched.courtEveningRate !== undefined && matched.courtEveningRate !== null && matched.courtEveningRate > 0) {
+    return Number(matched.courtEveningRate);
+  }
+  return baseEveningRate;
+}
+
 export function getEffectiveSlotRate(
   court: Court | null | undefined,
   slotHourStr: string,
@@ -193,14 +223,19 @@ export function getEffectiveSlotRate(
   if (!court) return 0;
   if (dateStr && settings?.scheduledPriceChanges) {
     const matched = getActiveScheduledPriceChange(dateStr, settings.scheduledPriceChanges);
-    if (matched && matched.courtHourlyRate !== undefined && matched.courtHourlyRate !== null && matched.courtHourlyRate > 0) {
-      // If a scheduled court hourly rate is active, it overrides the base hourly rate.
-      // If the court has evening rules, check if this slot matches an evening rule.
+    if (matched) {
       const matchedRule = getSlotPricingRule(court, slotHourStr);
-      if (matchedRule && matchedRule.rate !== undefined && matchedRule.rate !== null) {
+      // Evening slot: check court evening override
+      if (matchedRule) {
+        if (matched.courtEveningRate !== undefined && matched.courtEveningRate !== null && matched.courtEveningRate > 0) {
+          return Number(matched.courtEveningRate);
+        }
         return Number(matchedRule.rate);
       }
-      return Number(matched.courtHourlyRate);
+      // Daytime slot: check court daytime override
+      if (matched.courtHourlyRate !== undefined && matched.courtHourlyRate !== null && matched.courtHourlyRate > 0) {
+        return Number(matched.courtHourlyRate);
+      }
     }
   }
   return getSlotRate(court, slotHourStr);

@@ -197,8 +197,8 @@ export default function AdminPage() {
   const [priceChangeFormStartDate, setPriceChangeFormStartDate] = useState<string>('');
   const [priceChangeFormEndDate, setPriceChangeFormEndDate] = useState<string>('');
   const [priceChangeFormCourtRate, setPriceChangeFormCourtRate] = useState<string>('');
+  const [priceChangeFormEveningRate, setPriceChangeFormEveningRate] = useState<string>('');
   const [priceChangeFormOpenPlayPrice, setPriceChangeFormOpenPlayPrice] = useState<string>('');
-  const [priceChangeFormIsActive, setPriceChangeFormIsActive] = useState<boolean>(true);
 
   // Morning Open Play states
   const [settingsOpenPlayEnabled, setSettingsOpenPlayEnabled] = useState(true);
@@ -1077,15 +1077,16 @@ export default function AdminPage() {
   const handleSaveScheduledPriceChange = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!priceChangeFormName.trim() || !priceChangeFormStartDate) {
-      alert('Please provide a name and start date for the scheduled price adjustment.');
+      alert('Please provide a schedule name and start date.');
       return;
     }
 
     const courtRate = priceChangeFormCourtRate !== '' ? parseFloat(priceChangeFormCourtRate) : undefined;
+    const courtEveRate = priceChangeFormEveningRate !== '' ? parseFloat(priceChangeFormEveningRate) : undefined;
     const openPlayRate = priceChangeFormOpenPlayPrice !== '' ? parseFloat(priceChangeFormOpenPlayPrice) : undefined;
 
-    if (courtRate === undefined && openPlayRate === undefined) {
-      alert('Please specify at least one price override (Court Hourly Rate or Morning Open Play Pass).');
+    if (courtRate === undefined && courtEveRate === undefined && openPlayRate === undefined) {
+      alert('Please specify at least one price override (Morning/Daytime Court Rate, Evening Court Rate, or Morning Open Play Pass).');
       return;
     }
 
@@ -1097,8 +1098,8 @@ export default function AdminPage() {
       startDate: priceChangeFormStartDate,
       endDate: priceChangeFormEndDate.trim() || undefined,
       courtHourlyRate: courtRate,
+      courtEveningRate: courtEveRate,
       openPlayPrice: openPlayRate,
-      isActive: priceChangeFormIsActive ? 1 : 0,
       createdAt: editingPriceChangeIndex !== null && settingsScheduledPriceChanges[editingPriceChangeIndex]?.createdAt
         ? settingsScheduledPriceChanges[editingPriceChangeIndex].createdAt
         : new Date().toISOString()
@@ -4013,8 +4014,8 @@ export default function AdminPage() {
                       setPriceChangeFormStartDate('');
                       setPriceChangeFormEndDate('');
                       setPriceChangeFormCourtRate('');
+                      setPriceChangeFormEveningRate('');
                       setPriceChangeFormOpenPlayPrice('');
-                      setPriceChangeFormIsActive(true);
                       setIsPriceChangeModalOpen(true);
                     }}
                     className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 text-xs font-bold transition-all shadow-sm flex items-center gap-1 cursor-pointer shrink-0"
@@ -4031,13 +4032,19 @@ export default function AdminPage() {
                 ) : (
                   <div className="space-y-2.5">
                     {settingsScheduledPriceChanges.map((rule, idx) => {
-                      const isActive = Number(rule.isActive) === 1;
+                      const today = todayStr || new Date().toISOString().split('T')[0];
+                      const isUpcoming = rule.startDate > today;
+                      const isExpired = Boolean(rule.endDate && rule.endDate < today);
+                      const isCurrent = !isUpcoming && !isExpired;
+
                       return (
                         <div
                           key={rule.id || idx}
                           className={`p-3 sm:p-3.5 rounded-xl bg-white dark:bg-slate-900 border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs ${
-                            isActive
-                              ? 'border-lime-500/40 dark:border-lime-500/30'
+                            isCurrent
+                              ? 'border-lime-500/50 dark:border-lime-500/40'
+                              : isUpcoming
+                              ? 'border-amber-500/40 dark:border-amber-500/30'
                               : 'border-slate-200 dark:border-slate-800 opacity-60'
                           }`}
                         >
@@ -4046,13 +4053,19 @@ export default function AdminPage() {
                               <span className="font-bold text-xs text-slate-900 dark:text-white">
                                 {rule.name}
                               </span>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
-                                isActive
-                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                              }`}>
-                                {isActive ? 'Enabled' : 'Disabled'}
-                              </span>
+                              {isCurrent ? (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                                  ● Currently Active
+                                </span>
+                              ) : isUpcoming ? (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                                  ⏳ Upcoming
+                                </span>
+                              ) : (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700">
+                                  ○ Concluded
+                                </span>
+                              )}
                               {rule.endDate ? (
                                 <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md font-medium">
                                   Temporary Promo
@@ -4068,7 +4081,12 @@ export default function AdminPage() {
                               📅 {rule.startDate} {rule.endDate ? `to ${rule.endDate}` : 'onwards'}
                               {rule.courtHourlyRate !== undefined && (
                                 <span className="font-semibold text-slate-700 dark:text-slate-300 ml-2">
-                                  • Court Rate: ₱{rule.courtHourlyRate}/hr
+                                  • Morning: ₱{rule.courtHourlyRate}/hr
+                                </span>
+                              )}
+                              {rule.courtEveningRate !== undefined && (
+                                <span className="font-semibold text-slate-700 dark:text-slate-300 ml-2">
+                                  • Evening: ₱{rule.courtEveningRate}/hr
                                 </span>
                               )}
                               {rule.openPlayPrice !== undefined && (
@@ -4080,23 +4098,6 @@ export default function AdminPage() {
                           </div>
 
                           <div className="flex items-center gap-2 self-end sm:self-center">
-                            {/* Toggle active */}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const updated = [...settingsScheduledPriceChanges];
-                                updated[idx] = { ...updated[idx], isActive: isActive ? 0 : 1 };
-                                persistScheduledPriceChanges(updated);
-                              }}
-                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                                isActive
-                                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-500/25'
-                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200'
-                              }`}
-                            >
-                              {isActive ? 'Turn Off' : 'Turn On'}
-                            </button>
-
                             {/* Edit */}
                             <button
                               type="button"
@@ -4106,8 +4107,8 @@ export default function AdminPage() {
                                 setPriceChangeFormStartDate(rule.startDate);
                                 setPriceChangeFormEndDate(rule.endDate || '');
                                 setPriceChangeFormCourtRate(rule.courtHourlyRate !== undefined ? String(rule.courtHourlyRate) : '');
+                                setPriceChangeFormEveningRate(rule.courtEveningRate !== undefined ? String(rule.courtEveningRate) : '');
                                 setPriceChangeFormOpenPlayPrice(rule.openPlayPrice !== undefined ? String(rule.openPlayPrice) : '');
-                                setPriceChangeFormIsActive(Number(rule.isActive) === 1);
                                 setIsPriceChangeModalOpen(true);
                               }}
                               className="p-1.5 rounded-lg text-lime-600 dark:text-lime-400 hover:bg-lime-500/10 cursor-pointer"
@@ -5236,92 +5237,61 @@ export default function AdminPage() {
                 💡 Leave End Date blank to make this a permanent rate change from Start Date onwards.
               </p>
 
-              {/* Court Rate & Open Play Rate overrides */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Court Rate (PHP / hr)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="e.g. 400"
-                    value={priceChangeFormCourtRate}
-                    onChange={(e) => setPriceChangeFormCourtRate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
-                  />
-                  <span className="text-[10px] text-slate-400 block mt-0.5">Overrides base court hourly rate</span>
+              {/* Court Rates (Morning & Evening) and Open Play Rate overrides */}
+              <div className="space-y-3 pt-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Morning / Daytime Rate (₱/hr)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="e.g. 210"
+                      value={priceChangeFormCourtRate}
+                      onChange={(e) => setPriceChangeFormCourtRate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
+                    />
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Overrides standard daytime rate</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                      Evening Rate (₱/hr)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      placeholder="e.g. 260"
+                      value={priceChangeFormEveningRate}
+                      onChange={(e) => setPriceChangeFormEveningRate(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
+                    />
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Overrides evening rate (3 PM onwards)</span>
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                    Unli Play Pass (PHP)
+                    Morning Unli Play Pass (₱/player)
                   </label>
                   <input
                     type="number"
                     min="0"
                     step="1"
-                    placeholder="e.g. 150"
+                    placeholder="e.g. 130"
                     value={priceChangeFormOpenPlayPrice}
                     onChange={(e) => setPriceChangeFormOpenPlayPrice(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
                   />
-                  <span className="text-[10px] text-slate-400 block mt-0.5">Overrides Morning Open Play price</span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">Overrides Morning Open Play price (5 AM – 11 AM)</span>
                 </div>
-              </div>
 
-              {/* Quick Presets */}
-              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-1.5">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Quick Rate Presets:</span>
-                <div className="flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPriceChangeFormCourtRate('400');
-                      setPriceChangeFormOpenPlayPrice('150');
-                    }}
-                    className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-300 cursor-pointer"
-                  >
-                    Peak Season (₱400/hr • ₱150 unli)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPriceChangeFormCourtRate('300');
-                      setPriceChangeFormOpenPlayPrice('100');
-                    }}
-                    className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-300 cursor-pointer"
-                  >
-                    Promo Discount (₱300/hr • ₱100 unli)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPriceChangeFormCourtRate('350');
-                    }}
-                    className="px-2 py-1 rounded bg-slate-200 dark:bg-slate-700 text-[10px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-300 cursor-pointer"
-                  >
-                    Court Only (₱350/hr)
-                  </button>
+                <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
+                  💡 Leave any rate blank to keep the court&apos;s standard price for that category.
                 </div>
-              </div>
-
-              {/* Active Toggle */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-                <div>
-                  <span className="text-xs font-bold text-slate-900 dark:text-white block">Rule Active</span>
-                  <span className="text-[10px] text-slate-500">Enable or temporarily suspend this rule</span>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={priceChangeFormIsActive}
-                    onChange={(e) => setPriceChangeFormIsActive(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-lime-500"></div>
-                </label>
               </div>
 
               <div className="pt-2 flex gap-3">
