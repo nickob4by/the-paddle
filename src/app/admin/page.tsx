@@ -1139,6 +1139,13 @@ export default function AdminPage() {
     return '3:00 PM';
   }, [courts]);
 
+  // Dynamically resolve the morning open play hours label for hints/subtext
+  const openPlayHoursLabel = useMemo(() => {
+    const start = settingsOpenPlayStartTime || settings?.openPlayStartTime || '05:00';
+    const end = settingsOpenPlayEndTime || settings?.openPlayEndTime || '11:00';
+    return `${formatTime(start)} – ${formatTime(end)}`;
+  }, [settingsOpenPlayStartTime, settingsOpenPlayEndTime, settings?.openPlayStartTime, settings?.openPlayEndTime]);
+
   // Filtered Bookings
   const filteredBookings = bookings.filter((b) => {
     const matchesSearch =
@@ -5299,7 +5306,9 @@ export default function AdminPage() {
                     onChange={(e) => setPriceChangeFormOpenPlayPrice(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
                   />
-                  <span className="text-[10px] text-slate-400 block mt-0.5">Overrides Morning Open Play price (5 AM – 11 AM)</span>
+                  <span className="text-[10px] text-slate-400 block mt-0.5">
+                    Overrides Morning Open Play price ({openPlayHoursLabel})
+                  </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400">
