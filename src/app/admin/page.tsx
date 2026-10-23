@@ -1128,6 +1128,17 @@ export default function AdminPage() {
     return `${displayHour}:00 ${ampm}`;
   };
 
+  // Dynamically resolve the court evening start time label for hints/subtext
+  const courtsEveningStartLabel = useMemo(() => {
+    for (const c of courts) {
+      const rules = parsePricingRules(c.pricingRules);
+      if (rules.length > 0 && rules[0].startTime) {
+        return formatTime(rules[0].startTime);
+      }
+    }
+    return '3:00 PM';
+  }, [courts]);
+
   // Filtered Bookings
   const filteredBookings = bookings.filter((b) => {
     const matchesSearch =
@@ -5269,7 +5280,9 @@ export default function AdminPage() {
                       onChange={(e) => setPriceChangeFormEveningRate(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
                     />
-                    <span className="text-[10px] text-slate-400 block mt-0.5">Overrides evening rate (based on court&apos;s evening time window)</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      Overrides evening rate (starts at {courtsEveningStartLabel} onwards)
+                    </span>
                   </div>
                 </div>
 
