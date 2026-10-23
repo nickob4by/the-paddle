@@ -18,7 +18,8 @@ import {
   QrCode,
   Download,
   Eye,
-  ImageIcon
+  ImageIcon,
+  Tag
 } from 'lucide-react';
 import BookingTicket from './BookingTicket';
 
@@ -33,6 +34,7 @@ interface BookingModalProps {
     durationHours: number;
     totalAmount: number;
     bookingType?: 'STANDARD' | 'OPEN_PLAY';
+    scheduledRuleName?: string;
   } | null;
   onBookingSuccess: (booking: Booking) => void;
 }
@@ -257,7 +259,10 @@ export default function BookingModal({
                     <Calendar className="w-3 h-3 text-lime-600 dark:text-lime-400" /> Date
                   </span>
                   <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
-                    {new Date(bookingDetails.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    {(() => {
+                      const [y, m, d] = bookingDetails.date.split('-').map(Number);
+                      return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                    })()}
                   </span>
                 </div>
                 <div>
@@ -270,9 +275,15 @@ export default function BookingModal({
                 </div>
                 <div>
                   <span className="text-slate-500 dark:text-slate-400 block mb-0.5 text-[11px]">Total Amount</span>
-                  <span className="font-black text-lime-600 dark:text-lime-400 text-sm sm:text-base">
+                  <span className="font-black text-lime-600 dark:text-lime-400 text-sm sm:text-base block">
                     ₱{bookingDetails.totalAmount.toLocaleString()} {isOpenPlay ? '(1 Pass)' : ''}
                   </span>
+                  {bookingDetails.scheduledRuleName && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+                      <Tag className="w-2.5 h-2.5" />
+                      Special Rate: {bookingDetails.scheduledRuleName}
+                    </span>
+                  )}
                 </div>
               </div>
 

@@ -25,6 +25,7 @@ export default function HomePage() {
     durationHours: number;
     totalAmount: number;
     bookingType?: 'STANDARD' | 'OPEN_PLAY';
+    scheduledRuleName?: string;
   } | null>(null);
 
   const [courtOpenTime, setCourtOpenTime] = useState<string>('');
@@ -133,6 +134,7 @@ export default function HomePage() {
     durationHours: number;
     totalAmount: number;
     bookingType?: 'STANDARD' | 'OPEN_PLAY';
+    scheduledRuleName?: string;
   }) => {
     setCurrentBookingDetails(details);
     setIsBookingOpen(true);

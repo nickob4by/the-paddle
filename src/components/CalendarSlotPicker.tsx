@@ -32,7 +32,8 @@ import {
   Sun,
   Wrench,
   AlertTriangle,
-  Users
+  Users,
+  Tag
 } from 'lucide-react';
 
 interface CalendarSlotPickerProps {
@@ -63,6 +64,7 @@ interface CalendarSlotPickerProps {
     durationHours: number;
     totalAmount: number;
     bookingType?: 'STANDARD' | 'OPEN_PLAY';
+    scheduledRuleName?: string;
   }) => void;
 }
 
@@ -511,31 +513,82 @@ export default function CalendarSlotPicker({
                 </div>
 
                 {/* Pricing & description */}
-                <div className="flex items-baseline justify-between w-full mt-1">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-lg sm:text-xl font-black text-lime-600 dark:text-lime-400">₱{court.hourlyRate}</span>
-                    <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">/hr</span>
-                  </div>
-                  {court.description && (
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[140px]">
-                      {court.description}
-                    </span>
-                  )}
-                </div>
+                {(() => {
+                  const effectiveDayRate = getEffectiveCourtHourlyRate(selectedDate, court, { scheduledPriceChanges });
+                  const isDayOverridden = Boolean(
+                    activePriceChange &&
+                    activePriceChange.courtHourlyRate !== undefined &&
+                    activePriceChange.courtHourlyRate !== court.hourlyRate
+                  );
 
-                {parsePricingRules(court.pricingRules).length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap gap-1">
-                    {parsePricingRules(court.pricingRules).map((r) => (
-                      <span
-                        key={r.id || r.startTime}
-                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50"
-                      >
-                        <Moon className="w-2.5 h-2.5" />
-                        <span>{r.label || 'Evening'}: ₱{r.rate}/hr</span>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                  return (
+                    <>
+                      <div className="flex items-baseline justify-between w-full mt-1">
+                        <div className="flex items-baseline flex-wrap gap-1">
+                          {isDayOverridden && (
+                            <span className="text-xs text-slate-400 dark:text-slate-500 line-through">
+                              ₱{court.hourlyRate}
+                            </span>
+                          )}
+                          <span className={`text-lg sm:text-xl font-black ${
+                            isDayOverridden
+                              ? 'text-amber-600 dark:text-amber-400'
+                              : 'text-lime-600 dark:text-lime-400'
+                          }`}>
+                            ₱{effectiveDayRate}
+                          </span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">/hr</span>
+                          {isDayOverridden && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                              Scheduled
+                            </span>
+                          )}
+                        </div>
+                        {court.description && (
+                          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[140px]">
+                            {court.description}
+                          </span>
+                        )}
+                      </div>
+
+                      {parsePricingRules(court.pricingRules).length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800/60 flex flex-wrap gap-1">
+                          {parsePricingRules(court.pricingRules).map((r) => {
+                            const isEveningOverridden = Boolean(
+                              activePriceChange &&
+                              activePriceChange.courtEveningRate !== undefined &&
+                              r.rate !== undefined &&
+                              activePriceChange.courtEveningRate !== r.rate
+                            );
+                            const currentEveningRate = isEveningOverridden
+                              ? activePriceChange!.courtEveningRate!
+                              : r.rate;
+
+                            return (
+                              <span
+                                key={r.id || r.startTime}
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
+                                  isEveningOverridden
+                                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-300/60 dark:border-amber-700/60'
+                                    : 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-800/50'
+                                }`}
+                              >
+                                <Moon className="w-2.5 h-2.5" />
+                                <span>
+                                  {r.label || 'Evening'}:{' '}
+                                  {isEveningOverridden && (
+                                    <span className="line-through opacity-60 mr-1">₱{r.rate}</span>
+                                  )}
+                                  ₱{currentEveningRate}/hr
+                                </span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </button>
             );
           })}
@@ -632,6 +685,42 @@ export default function CalendarSlotPicker({
             </div>
           </div>
         </div>
+
+        {/* SCHEDULED PRICE CHANGE BANNER - POSITIONED PROMINENTLY BELOW STEP 2 */}
+        {activePriceChange && (
+          <div className="mt-3.5 p-3.5 sm:p-4 rounded-xl sm:rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs shadow-sm animate-in fade-in">
+            <div className="flex items-start sm:items-center gap-2.5">
+              <Sparkles className="w-4 h-4 text-amber-500 shrink-0 mt-0.5 sm:mt-0" />
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <strong className="font-bold text-amber-800 dark:text-amber-300">
+                    {activePriceChange.name}:
+                  </strong>
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                    Special Scheduled Rate Active
+                  </span>
+                </div>
+                <div className="mt-1 text-slate-700 dark:text-slate-300 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] sm:text-xs">
+                  {activePriceChange.courtHourlyRate !== undefined && (
+                    <span>Daytime: <strong className="text-slate-900 dark:text-white">₱{activePriceChange.courtHourlyRate}/hr</strong></span>
+                  )}
+                  {activePriceChange.courtHourlyRate !== undefined && activePriceChange.courtEveningRate !== undefined && (
+                    <span className="text-slate-400">•</span>
+                  )}
+                  {activePriceChange.courtEveningRate !== undefined && (
+                    <span>Evening: <strong className="text-slate-900 dark:text-white">₱{activePriceChange.courtEveningRate}/hr</strong></span>
+                  )}
+                  {(activePriceChange.courtHourlyRate !== undefined || activePriceChange.courtEveningRate !== undefined) && activePriceChange.openPlayPrice !== undefined && (
+                    <span className="text-slate-400">•</span>
+                  )}
+                  {activePriceChange.openPlayPrice !== undefined && (
+                    <span>Morning Open Play: <strong className="text-slate-900 dark:text-white">₱{activePriceChange.openPlayPrice}/player</strong></span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* STEP 3: TIME SLOTS OR CLOSURE / MAINTENANCE CARDS */}
@@ -734,28 +823,6 @@ export default function CalendarSlotPicker({
 
             {/* STEP 3: TIME SLOTS GRID OR MORNING OPEN PLAY */}
       <div className="mt-5 sm:mt-6">
-        {/* SCHEDULED PRICE CHANGE BANNER */}
-        {activePriceChange && (
-          <div className="mb-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-sm animate-in fade-in">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-              <div>
-                <strong className="font-bold text-amber-700 dark:text-amber-300">{activePriceChange.name}:</strong>{' '}
-                <span>
-                  {activePriceChange.courtHourlyRate !== undefined && `Morning/Daytime ₱${activePriceChange.courtHourlyRate}/hr`}
-                  {activePriceChange.courtHourlyRate !== undefined && activePriceChange.courtEveningRate !== undefined && ' • '}
-                  {activePriceChange.courtEveningRate !== undefined && `Evening ₱${activePriceChange.courtEveningRate}/hr`}
-                  {(activePriceChange.courtHourlyRate !== undefined || activePriceChange.courtEveningRate !== undefined) && activePriceChange.openPlayPrice !== undefined && ' • '}
-                  {activePriceChange.openPlayPrice !== undefined && `Morning Open Play ₱${activePriceChange.openPlayPrice}/player`}
-                </span>
-              </div>
-            </div>
-            <span className="self-start sm:self-center text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300">
-              Special Scheduled Rate
-            </span>
-          </div>
-        )}
-
         <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5 sm:mb-3 flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
           {isOpenPlayActive ? `Step 3 • Morning Open Play & Available Hours (${selectedCourt?.name})` : `Step 3 • Available 1-Hour Time Slots (${selectedCourt?.name})`}
@@ -785,7 +852,7 @@ export default function CalendarSlotPicker({
                     ₱{effectiveOpenPlayPrice} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">/ player</span>
                     {activePriceChange?.openPlayPrice !== undefined && (
                       <span className="ml-2 text-xs font-bold text-amber-600 dark:text-amber-400">
-                        (Promo Rate)
+                        (Special Rate)
                       </span>
                     )}
                   </span>
@@ -815,7 +882,8 @@ export default function CalendarSlotPicker({
                       endTime: openPlaySettings.openPlayEndTime,
                       durationHours: 6,
                       totalAmount: effectiveOpenPlayPrice,
-                      bookingType: 'OPEN_PLAY'
+                      bookingType: 'OPEN_PLAY',
+                      scheduledRuleName: activePriceChange?.openPlayPrice !== undefined ? activePriceChange.name : undefined
                     });
                   }}
                   className={`w-full sm:w-auto px-5 py-3 rounded-xl font-black text-xs sm:text-sm transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer ${
@@ -1021,6 +1089,12 @@ export default function CalendarSlotPicker({
               <span className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white">
                 {formatTime(startTime)} – {formatTime(endTime)}
               </span>
+              {activePriceChange && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                  <Tag className="w-3 h-3 text-amber-500" />
+                  Special Rate: {activePriceChange.name}
+                </span>
+              )}
             </div>
             <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
               {selectedDate} • {selectedCourt.name}
@@ -1049,7 +1123,8 @@ export default function CalendarSlotPicker({
                   endTime,
                   durationHours,
                   totalAmount,
-                  bookingType: 'STANDARD'
+                  bookingType: 'STANDARD',
+                  scheduledRuleName: activePriceChange ? activePriceChange.name : undefined
                 });
               }}
               className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-lime-500/30 transition-all cursor-pointer hover:scale-105 active:scale-95"
