@@ -5269,7 +5269,7 @@ export default function AdminPage() {
                       onChange={(e) => setPriceChangeFormEveningRate(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm font-mono focus:outline-none focus:border-lime-500"
                     />
-                    <span className="text-[10px] text-slate-400 block mt-0.5">Overrides evening rate (3 PM onwards)</span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">Overrides evening rate (based on court&apos;s evening time window)</span>
                   </div>
                 </div>
 
