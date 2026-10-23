@@ -113,6 +113,97 @@ export interface SystemSettings {
   openPlayCourtIds?: string;  // "all" or JSON array e.g. '["court-1"]'
   openPlayDays?: string;      // JSON array e.g. '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
   noticeBannerEnabled?: number; // 1 = enabled (visible on homepage), 0 = disabled (hidden)
+  scheduledPriceChanges?: string; // JSON array of ScheduledPriceChange
+}
+
+export interface ScheduledPriceChange {
+  id: string;
+  name: string;             // e.g. "December Rate Adjustment"
+  startDate: string;        // "YYYY-MM-DD"
+  endDate?: string;         // "YYYY-MM-DD" (optional: if omitted, applies indefinitely from startDate)
+  isActive: number;         // 1 = active, 0 = inactive
+  courtHourlyRate?: number; // Uniform court hourly rate in PHP
+  openPlayPrice?: number;   // Unli play price in PHP
+  createdAt: string;
+}
+
+export function parseScheduledPriceChanges(data: any): ScheduledPriceChange[] {
+  if (!data) return [];
+  if (Array.isArray(data)) return data;
+  if (typeof data === 'string') {
+    try {
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+export function getActiveScheduledPriceChange(
+  dateStr: string,
+  rules?: ScheduledPriceChange[] | string
+): ScheduledPriceChange | null {
+  if (!dateStr) return null;
+  const list = parseScheduledPriceChanges(rules);
+  return list.find((rule) => {
+    if (Number(rule.isActive) === 0) return false;
+    if (!rule.startDate) return false;
+    const start = rule.startDate;
+    const end = rule.endDate || '9999-12-31';
+    return dateStr >= start && dateStr <= end;
+  }) || null;
+}
+
+export function getEffectiveOpenPlayPrice(
+  dateStr: string,
+  settings: Partial<SystemSettings> | null | undefined
+): number {
+  const basePrice = Number(settings?.openPlayPrice !== undefined && settings?.openPlayPrice !== null ? settings.openPlayPrice : 130);
+  if (!dateStr || !settings?.scheduledPriceChanges) return basePrice;
+  const matched = getActiveScheduledPriceChange(dateStr, settings.scheduledPriceChanges);
+  if (matched && matched.openPlayPrice !== undefined && matched.openPlayPrice !== null && matched.openPlayPrice > 0) {
+    return Number(matched.openPlayPrice);
+  }
+  return basePrice;
+}
+
+export function getEffectiveCourtHourlyRate(
+  dateStr: string,
+  court: Court | null | undefined,
+  settings?: Partial<SystemSettings> | null | undefined
+): number {
+  if (!court) return 0;
+  const baseRate = Number(court.hourlyRate) || 0;
+  if (!dateStr || !settings?.scheduledPriceChanges) return baseRate;
+  const matched = getActiveScheduledPriceChange(dateStr, settings.scheduledPriceChanges);
+  if (matched && matched.courtHourlyRate !== undefined && matched.courtHourlyRate !== null && matched.courtHourlyRate > 0) {
+    return Number(matched.courtHourlyRate);
+  }
+  return baseRate;
+}
+
+export function getEffectiveSlotRate(
+  court: Court | null | undefined,
+  slotHourStr: string,
+  dateStr?: string,
+  settings?: Partial<SystemSettings> | null | undefined
+): number {
+  if (!court) return 0;
+  if (dateStr && settings?.scheduledPriceChanges) {
+    const matched = getActiveScheduledPriceChange(dateStr, settings.scheduledPriceChanges);
+    if (matched && matched.courtHourlyRate !== undefined && matched.courtHourlyRate !== null && matched.courtHourlyRate > 0) {
+      // If a scheduled court hourly rate is active, it overrides the base hourly rate.
+      // If the court has evening rules, check if this slot matches an evening rule.
+      const matchedRule = getSlotPricingRule(court, slotHourStr);
+      if (matchedRule && matchedRule.rate !== undefined && matchedRule.rate !== null) {
+        return Number(matchedRule.rate);
+      }
+      return Number(matched.courtHourlyRate);
+    }
+  }
+  return getSlotRate(court, slotHourStr);
 }
 
 export function parseOpenPlayCourtIds(courtIds?: string): string[] {
@@ -201,7 +292,7 @@ export function isHourInClosureRange(
 export interface Product {
   id: string;
   name: string;
-  category: 'DRINKS' | 'BALLS_GEAR' | 'RENTALS' | 'SNACKS' | 'OTHER';
+  category: 'DRINKS' | 'BALLS_GEAR' | 'RENTALS' | 'SNACKS' | 'OTHER' | (string & {});
   price: number; // Retail selling price PHP
   costPrice?: number; // Cost PHP
   stock: number;

@@ -11,7 +11,11 @@ import {
   isHourInClosureRange,
   isOpenPlayActiveOnDate,
   isCourtParticipatingInOpenPlay,
-  isHourInOpenPlayWindow
+  isHourInOpenPlayWindow,
+  getActiveScheduledPriceChange,
+  getEffectiveOpenPlayPrice,
+  getEffectiveCourtHourlyRate,
+  getEffectiveSlotRate
 } from '@/lib/types';
 import {
   Clock,
@@ -48,6 +52,7 @@ interface CalendarSlotPickerProps {
   openPlayCapacity?: number;
   openPlayCourtIds?: string;
   openPlayDays?: string;
+  scheduledPriceChanges?: string;
   onSelectCourt: (court: Court) => void;
   onProceedToBooking: (bookingDetails: {
     court: Court;
@@ -78,6 +83,7 @@ export default function CalendarSlotPicker({
   openPlayCapacity,
   openPlayCourtIds,
   openPlayDays,
+  scheduledPriceChanges,
   onSelectCourt,
   onProceedToBooking
 }: CalendarSlotPickerProps) {
@@ -107,6 +113,22 @@ export default function CalendarSlotPicker({
     openPlayCourtIds: openPlayCourtIds || 'all',
     openPlayDays: openPlayDays || '["MON","TUE","WED","THU","FRI","SAT","SUN"]'
   }), [openPlayEnabled, openPlayStartTime, openPlayEndTime, openPlayPrice, openPlayCapacity, openPlayCourtIds, openPlayDays]);
+
+  const activePriceChange = useMemo(() => {
+    if (!selectedDate || !scheduledPriceChanges) return null;
+    return getActiveScheduledPriceChange(selectedDate, scheduledPriceChanges);
+  }, [selectedDate, scheduledPriceChanges]);
+
+  const effectiveOpenPlayPrice = useMemo(() => {
+    return getEffectiveOpenPlayPrice(selectedDate, {
+      openPlayPrice: openPlaySettings.openPlayPrice,
+      scheduledPriceChanges
+    });
+  }, [selectedDate, openPlaySettings.openPlayPrice, scheduledPriceChanges]);
+
+  const calculateSlotRate = useCallback((slot: string) => {
+    return getEffectiveSlotRate(selectedCourt, slot, selectedDate, { scheduledPriceChanges });
+  }, [selectedCourt, selectedDate, scheduledPriceChanges]);
 
   const isOpenPlayActive = useMemo(() => {
     return isOpenPlayActiveOnDate(selectedDate, openPlaySettings) &&
@@ -395,7 +417,7 @@ export default function CalendarSlotPicker({
     }
   }
   const durationHours = sortedSlots.length;
-  const totalAmount = sortedSlots.reduce((sum, slot) => sum + getSlotRate(selectedCourt, slot), 0);
+  const totalAmount = sortedSlots.reduce((sum, slot) => sum + calculateSlotRate(slot), 0);
 
   // Format 24h to 12h AM/PM
   const formatTime = (time: string) => {
@@ -711,6 +733,26 @@ export default function CalendarSlotPicker({
 
             {/* STEP 3: TIME SLOTS GRID OR MORNING OPEN PLAY */}
       <div className="mt-5 sm:mt-6">
+        {/* SCHEDULED PRICE CHANGE BANNER */}
+        {activePriceChange && (
+          <div className="mb-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-sm animate-in fade-in">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+              <div>
+                <strong className="font-bold text-amber-700 dark:text-amber-300">{activePriceChange.name}:</strong>{' '}
+                <span>
+                  {activePriceChange.courtHourlyRate !== undefined && `Court rate ₱${activePriceChange.courtHourlyRate}/hr`}
+                  {activePriceChange.courtHourlyRate !== undefined && activePriceChange.openPlayPrice !== undefined && ' • '}
+                  {activePriceChange.openPlayPrice !== undefined && `Morning Open Play ₱${activePriceChange.openPlayPrice}/player`}
+                </span>
+              </div>
+            </div>
+            <span className="self-start sm:self-center text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/20 text-amber-800 dark:text-amber-300">
+              Special Scheduled Rate
+            </span>
+          </div>
+        )}
+
         <label className="text-[11px] sm:text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5 sm:mb-3 flex items-center gap-1.5">
           <Clock className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
           {isOpenPlayActive ? `Step 3 • Morning Open Play & Available Hours (${selectedCourt?.name})` : `Step 3 • Available 1-Hour Time Slots (${selectedCourt?.name})`}
@@ -737,7 +779,12 @@ export default function CalendarSlotPicker({
 
                 <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
                   <span className="font-black text-lime-600 dark:text-lime-400 text-base sm:text-lg">
-                    ₱{openPlaySettings.openPlayPrice} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">/ player</span>
+                    ₱{effectiveOpenPlayPrice} <span className="text-xs font-normal text-slate-500 dark:text-slate-400">/ player</span>
+                    {activePriceChange?.openPlayPrice !== undefined && (
+                      <span className="ml-2 text-xs font-bold text-amber-600 dark:text-amber-400">
+                        (Promo Rate)
+                      </span>
+                    )}
                   </span>
                   <span className="text-slate-300 dark:text-slate-700">•</span>
                   <span className={`inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] ${
@@ -764,7 +811,7 @@ export default function CalendarSlotPicker({
                       startTime: openPlaySettings.openPlayStartTime,
                       endTime: openPlaySettings.openPlayEndTime,
                       durationHours: 6,
-                      totalAmount: openPlaySettings.openPlayPrice,
+                      totalAmount: effectiveOpenPlayPrice,
                       bookingType: 'OPEN_PLAY'
                     });
                   }}
@@ -779,7 +826,7 @@ export default function CalendarSlotPicker({
                       ? 'Morning Session Concluded Today'
                       : isOpenPlayFull
                       ? 'Session Full (Sold Out)'
-                      : `Book Open Play Pass (₱${openPlaySettings.openPlayPrice})`}
+                      : `Book Open Play Pass (₱${effectiveOpenPlayPrice})`}
                   </span>
                   {!isOpenPlayFull && !isOpenPlaySessionPassed && !isDateInClosure && (
                     <ChevronRight className="w-4 h-4 stroke-[3]" />
@@ -798,7 +845,7 @@ export default function CalendarSlotPicker({
               Standard Hourly Reservations (From {formatTime(openPlaySettings.openPlayEndTime)} onwards)
             </span>
             <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-              ₱{selectedCourt?.hourlyRate}/hr
+              ₱{getEffectiveCourtHourlyRate(selectedDate, selectedCourt, { scheduledPriceChanges })}/hr
             </span>
           </div>
         )}
@@ -811,7 +858,7 @@ export default function CalendarSlotPicker({
             const isSelected = selectedSlots.includes(slot);
             const slotIndex = timeSlots.indexOf(slot);
             const slotEndStr = slotIndex + 1 < timeSlots.length ? timeSlots[slotIndex + 1] : closeTime;
-            const slotRate = getSlotRate(selectedCourt, slot);
+            const slotRate = calculateSlotRate(slot);
             const slotRule = getSlotPricingRule(selectedCourt, slot);
             const hasPricingRules = parsePricingRules(selectedCourt?.pricingRules).length > 0;
 
@@ -975,7 +1022,7 @@ export default function CalendarSlotPicker({
             <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400">
               {selectedDate} • {selectedCourt.name}
               {sortedSlots.length > 0 && (() => {
-                const uniqueRates = Array.from(new Set(sortedSlots.map((s) => getSlotRate(selectedCourt, s))));
+                const uniqueRates = Array.from(new Set(sortedSlots.map((s) => calculateSlotRate(s))));
                 if (uniqueRates.length === 1) {
                   return ` • ₱${uniqueRates[0]}/hr`;
                 }

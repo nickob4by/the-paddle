@@ -36,6 +36,7 @@ export default function HomePage() {
   const [closureStartTime, setClosureStartTime] = useState<string>('');
   const [closureEndTime, setClosureEndTime] = useState<string>('');
   const [noticeBannerEnabled, setNoticeBannerEnabled] = useState<boolean>(false);
+  const [scheduledPriceChanges, setScheduledPriceChanges] = useState<string>('[]');
   const [openPlaySettings, setOpenPlaySettings] = useState<{
     openPlayEnabled?: number;
     openPlayStartTime?: string;
@@ -84,7 +85,8 @@ export default function HomePage() {
           openPlayCapacity = 16,
           openPlayCourtIds = 'all',
           openPlayDays = '["MON","TUE","WED","THU","FRI","SAT","SUN"]',
-          noticeBannerEnabled = 0
+          noticeBannerEnabled = 0,
+          scheduledPriceChanges = '[]'
         } = settingsData.settings;
 
         setCourtOpenTime(open);
@@ -96,6 +98,7 @@ export default function HomePage() {
         setClosureStartTime(startTimeVal || '');
         setClosureEndTime(endTimeVal || '');
         setNoticeBannerEnabled(Number(noticeBannerEnabled) === 1);
+        setScheduledPriceChanges(settingsData.settings.scheduledPriceChanges || '[]');
         setOpenPlaySettings({
           openPlayEnabled: Number(openPlayEnabled),
           openPlayStartTime,
@@ -318,6 +321,7 @@ export default function HomePage() {
                 openPlayCapacity={openPlaySettings.openPlayCapacity}
                 openPlayCourtIds={openPlaySettings.openPlayCourtIds}
                 openPlayDays={openPlaySettings.openPlayDays}
+                scheduledPriceChanges={scheduledPriceChanges}
                 onSelectCourt={(c) => setSelectedCourt(c)}
                 onProceedToBooking={handleProceedToBooking}
               />

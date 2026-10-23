@@ -13,7 +13,8 @@ async function ensureSettingsSchema() {
     'ALTER TABLE settings ADD COLUMN openPlayCapacity INTEGER DEFAULT 16',
     'ALTER TABLE settings ADD COLUMN openPlayCourtIds TEXT DEFAULT "all"',
     "ALTER TABLE settings ADD COLUMN openPlayDays TEXT DEFAULT '[\"MON\",\"TUE\",\"WED\",\"THU\",\"FRI\",\"SAT\",\"SUN\"]'",
-    'ALTER TABLE settings ADD COLUMN noticeBannerEnabled INTEGER DEFAULT 0'
+    'ALTER TABLE settings ADD COLUMN noticeBannerEnabled INTEGER DEFAULT 0',
+    "ALTER TABLE settings ADD COLUMN scheduledPriceChanges TEXT DEFAULT '[]'"
   ];
 
   for (const sql of columnsToAdd) {
@@ -31,7 +32,7 @@ const SELECT_SETTINGS_COLS = `
   courtOpenTime, courtCloseTime, isBookingDisabled,
   closureReason, closureBannerText, closureStartDate, closureEndDate, closureStartTime, closureEndTime,
   openPlayEnabled, openPlayStartTime, openPlayEndTime, openPlayPrice, openPlayCapacity, openPlayCourtIds, openPlayDays,
-  noticeBannerEnabled,
+  noticeBannerEnabled, scheduledPriceChanges,
   updatedAt
 `;
 
@@ -54,7 +55,8 @@ export async function GET(request: Request) {
       openPlayCapacity: rawSettings.openPlayCapacity !== undefined && rawSettings.openPlayCapacity !== null ? Number(rawSettings.openPlayCapacity) : 16,
       openPlayCourtIds: rawSettings.openPlayCourtIds || 'all',
       openPlayDays: rawSettings.openPlayDays || '["MON","TUE","WED","THU","FRI","SAT","SUN"]',
-      noticeBannerEnabled: rawSettings.noticeBannerEnabled !== undefined && rawSettings.noticeBannerEnabled !== null ? Number(rawSettings.noticeBannerEnabled) : 0
+      noticeBannerEnabled: rawSettings.noticeBannerEnabled !== undefined && rawSettings.noticeBannerEnabled !== null ? Number(rawSettings.noticeBannerEnabled) : 0,
+      scheduledPriceChanges: rawSettings.scheduledPriceChanges || '[]'
     };
 
     return NextResponse.json(
@@ -93,7 +95,8 @@ export async function PUT(request: Request) {
       openPlayCapacity,
       openPlayCourtIds,
       openPlayDays,
-      noticeBannerEnabled
+      noticeBannerEnabled,
+      scheduledPriceChanges
     } = body;
 
     const currentRes = await db.execute({ sql: 'SELECT * FROM settings WHERE id = ?', args: ['default'] });
@@ -126,6 +129,7 @@ export async function PUT(request: Request) {
                 openPlayCourtIds = COALESCE(?, openPlayCourtIds),
                 openPlayDays = COALESCE(?, openPlayDays),
                 noticeBannerEnabled = COALESCE(?, noticeBannerEnabled),
+                scheduledPriceChanges = COALESCE(?, scheduledPriceChanges),
                 updatedAt = ?
             WHERE id = ?`,
       args: [
@@ -150,6 +154,7 @@ export async function PUT(request: Request) {
         openPlayCourtIds !== undefined ? openPlayCourtIds : null,
         openPlayDays !== undefined ? openPlayDays : null,
         noticeBannerEnabled !== undefined ? Number(noticeBannerEnabled) : null,
+        scheduledPriceChanges !== undefined ? (typeof scheduledPriceChanges === 'string' ? scheduledPriceChanges : JSON.stringify(scheduledPriceChanges)) : null,
         updatedAt,
         'default'
       ]
@@ -170,7 +175,8 @@ export async function PUT(request: Request) {
       openPlayCapacity: rawSettings.openPlayCapacity !== undefined && rawSettings.openPlayCapacity !== null ? Number(rawSettings.openPlayCapacity) : 16,
       openPlayCourtIds: rawSettings.openPlayCourtIds || 'all',
       openPlayDays: rawSettings.openPlayDays || '["MON","TUE","WED","THU","FRI","SAT","SUN"]',
-      noticeBannerEnabled: rawSettings.noticeBannerEnabled !== undefined && rawSettings.noticeBannerEnabled !== null ? Number(rawSettings.noticeBannerEnabled) : 0
+      noticeBannerEnabled: rawSettings.noticeBannerEnabled !== undefined && rawSettings.noticeBannerEnabled !== null ? Number(rawSettings.noticeBannerEnabled) : 0,
+      scheduledPriceChanges: rawSettings.scheduledPriceChanges || '[]'
     };
 
     function rawPlaySettingsEndTime(s: any) {

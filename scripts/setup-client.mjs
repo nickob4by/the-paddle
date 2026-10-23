@@ -149,7 +149,8 @@ const SCHEMA_STATEMENTS = [
     openPlayCapacity INTEGER DEFAULT 16,
     openPlayCourtIds TEXT DEFAULT "all",
     openPlayDays TEXT DEFAULT "[\"MON\",\"TUE\",\"WED\",\"THU\",\"FRI\",\"SAT\",\"SUN\"]",
-    noticeBannerEnabled INTEGER DEFAULT 0
+    noticeBannerEnabled INTEGER DEFAULT 0,
+    scheduledPriceChanges TEXT DEFAULT '[]'
   );`,
 
   `CREATE TABLE IF NOT EXISTS booked_slots (

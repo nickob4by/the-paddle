@@ -5,6 +5,9 @@ import {
   Court,
   SystemSettings,
   getSlotRate,
+  getEffectiveSlotRate,
+  getEffectiveOpenPlayPrice,
+  getEffectiveCourtHourlyRate,
   isHourInClosureRange,
   isOpenPlayActiveOnDate,
   isCourtParticipatingInOpenPlay,
@@ -176,7 +179,7 @@ export async function POST(request: Request) {
     const settingsRes = await db.execute({
       sql: `SELECT id, isBookingDisabled, closureReason, closureBannerText, closureStartDate, closureEndDate,
                    closureStartTime, closureEndTime, openPlayEnabled, openPlayStartTime, openPlayEndTime,
-                   openPlayPrice, openPlayCapacity, openPlayCourtIds, openPlayDays
+                   openPlayPrice, openPlayCapacity, openPlayCourtIds, openPlayDays, scheduledPriceChanges
             FROM settings WHERE id = ?`,
       args: ['default']
     });
@@ -226,7 +229,7 @@ export async function POST(request: Request) {
       }
 
       const capacity = Number(settings.openPlayCapacity || 16);
-      const openPlayPrice = Number(settings.openPlayPrice !== undefined ? settings.openPlayPrice : 130);
+      const openPlayPrice = getEffectiveOpenPlayPrice(bookingDate, settings);
       finalStartTime = settings.openPlayStartTime || '05:00';
       finalEndTime = settings.openPlayEndTime || '11:00';
 
@@ -296,10 +299,10 @@ export async function POST(request: Request) {
       // Calculate total amount based on time-range pricing
       let calcAmount = 0;
       for (const slotStr of slotHours) {
-        calcAmount += getSlotRate(court, slotStr);
+        calcAmount += getEffectiveSlotRate(court, slotStr, bookingDate, settings);
       }
       finalDurationHours = Math.max(slotHours.length, 1);
-      finalTotalAmount = calcAmount > 0 ? calcAmount : finalDurationHours * Number(court.hourlyRate);
+      finalTotalAmount = calcAmount > 0 ? calcAmount : finalDurationHours * getEffectiveCourtHourlyRate(bookingDate, court, settings);
 
       // Overlap / Collision Check against booked_slots
       if (slotHours.length > 0) {
