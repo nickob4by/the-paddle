@@ -370,19 +370,36 @@ export default function CalendarSlotPicker({
     });
   };
 
-  // Check if morning open play session has already concluded today
+  // Check if morning open play session has already concluded today (strictly after openPlayEndTime)
   const isOpenPlaySessionPassed = useMemo(() => {
     if (!selectedDate) return false;
     const today = getTodayStr();
     if (selectedDate < today) return true;
     if (selectedDate > today) return false;
 
-    // For today:
+    // For today: compare against exact end time (hour & minute)
     const now = new Date();
-    const currentH = now.getHours();
-    const endH = parseInt(openPlaySettings.openPlayEndTime.split(':')[0], 10) || 11;
-    return currentH >= endH;
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    const [endHStr, endMStr] = (openPlaySettings.openPlayEndTime || '11:00').split(':');
+    const endMins = (parseInt(endHStr, 10) || 11) * 60 + (parseInt(endMStr || '0', 10) || 0);
+    return currentMins >= endMins;
   }, [selectedDate, openPlaySettings.openPlayEndTime]);
+
+  // Check if morning open play session is currently active/ongoing right now
+  const isOpenPlayOngoing = useMemo(() => {
+    if (!selectedDate) return false;
+    const today = getTodayStr();
+    if (selectedDate !== today) return false;
+
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    const [startHStr, startMStr] = (openPlaySettings.openPlayStartTime || '05:00').split(':');
+    const startMins = (parseInt(startHStr, 10) || 5) * 60 + (parseInt(startMStr || '0', 10) || 0);
+    const [endHStr, endMStr] = (openPlaySettings.openPlayEndTime || '11:00').split(':');
+    const endMins = (parseInt(endHStr, 10) || 11) * 60 + (parseInt(endMStr || '0', 10) || 0);
+
+    return currentMins >= startMins && currentMins < endMins;
+  }, [selectedDate, openPlaySettings.openPlayStartTime, openPlaySettings.openPlayEndTime]);
 
   // If Open Play is active on this court and date, filter morning slots from the individual 1-hour grid
   const displaySlots = useMemo(() => {
@@ -856,6 +873,15 @@ export default function CalendarSlotPicker({
                       </span>
                     )}
                   </span>
+                  {isOpenPlayOngoing && (
+                    <>
+                      <span className="text-slate-300 dark:text-slate-700">•</span>
+                      <span className="inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] bg-lime-500/15 text-lime-700 dark:text-lime-400 border border-lime-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-lime-500 animate-ping" />
+                        Live Session Ongoing
+                      </span>
+                    </>
+                  )}
                   <span className="text-slate-300 dark:text-slate-700">•</span>
                   <span className={`inline-flex items-center gap-1.5 font-bold px-2.5 py-0.5 rounded-full text-[11px] ${
                     isOpenPlayFull
@@ -897,6 +923,8 @@ export default function CalendarSlotPicker({
                       ? 'Morning Session Concluded Today'
                       : isOpenPlayFull
                       ? 'Session Full (Sold Out)'
+                      : isOpenPlayOngoing
+                      ? `Join Live Session (₱${effectiveOpenPlayPrice}) • Drop In Now`
                       : `Book Open Play Pass (₱${effectiveOpenPlayPrice})`}
                   </span>
                   {!isOpenPlayFull && !isOpenPlaySessionPassed && !isDateInClosure && (

@@ -146,21 +146,6 @@ export async function POST(request: Request) {
       );
     }
 
-    if (bookingDate === phTodayStr) {
-      const slotHour = parseInt(startTime.split(':')[0], 10);
-      const openHour = 5; // Facility opening hour
-      if (phHour >= openHour) {
-        const slotOffset = (slotHour - openHour + 24) % 24;
-        const currentOffset = (phHour - openHour + 24) % 24;
-        if (slotOffset < currentOffset) {
-          return NextResponse.json(
-            { success: false, error: 'Cannot book time slots that have already passed.' },
-            { status: 400 }
-          );
-        }
-      }
-    }
-
     // Verify Court exists and is active
     const courtRes = await db.execute({ sql: 'SELECT * FROM courts WHERE id = ?', args: [courtId] });
     if (courtRes.rows.length === 0) {
@@ -185,6 +170,37 @@ export async function POST(request: Request) {
     });
 
     const settings: SystemSettings = (settingsRes.rows[0] || {}) as any;
+
+    if (bookingDate === phTodayStr) {
+      if (isPass) {
+        // Morning Open Play pass: can be booked while session is active up to openPlayEndTime (default 11:00 AM sharp)
+        const endParts = (settings.openPlayEndTime || '11:00').split(':');
+        const endHour = parseInt(endParts[0], 10) || 11;
+        const endMin = parseInt(endParts[1] || '0', 10) || 0;
+        const currentMins = phHour * 60 + phTime.getMinutes();
+        const endMins = endHour * 60 + endMin;
+
+        if (currentMins >= endMins) {
+          return NextResponse.json(
+            { success: false, error: 'Morning Open Play session for today has already concluded.' },
+            { status: 400 }
+          );
+        }
+      } else {
+        const slotHour = parseInt(startTime.split(':')[0], 10);
+        const openHour = 5; // Facility opening hour
+        if (phHour >= openHour) {
+          const slotOffset = (slotHour - openHour + 24) % 24;
+          const currentOffset = (phHour - openHour + 24) % 24;
+          if (slotOffset < currentOffset) {
+            return NextResponse.json(
+              { success: false, error: 'Cannot book time slots that have already passed.' },
+              { status: 400 }
+            );
+          }
+        }
+      }
+    }
 
     // Check facility closures
     const isGloballyDisabled = Number(settings.isBookingDisabled) === 1;
