@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * 🏓 Court Booking System - Client Tenant Setup Wizard
+ * ðŸ“ Court Booking System - Client Tenant Setup Wizard
  * 
  * Usage:
  *   Interactive mode: npm run setup:client
@@ -33,19 +33,19 @@ function log(msg = '') {
 }
 
 function success(msg) {
-  console.log(`${colors.green}✓ ${msg}${colors.reset}`);
+  console.log(`${colors.green}âœ“ ${msg}${colors.reset}`);
 }
 
 function info(msg) {
-  console.log(`${colors.cyan}ℹ ${msg}${colors.reset}`);
+  console.log(`${colors.cyan}â„¹ ${msg}${colors.reset}`);
 }
 
 function warn(msg) {
-  console.log(`${colors.yellow}⚠ ${msg}${colors.reset}`);
+  console.log(`${colors.yellow}âš  ${msg}${colors.reset}`);
 }
 
 function error(msg) {
-  console.log(`${colors.red}✖ ${msg}${colors.reset}`);
+  console.log(`${colors.red}âœ– ${msg}${colors.reset}`);
 }
 
 // Turso query helper via native HTTP pipeline
@@ -197,12 +197,21 @@ const SCHEMA_STATEMENTS = [
     unitPrice REAL NOT NULL,
     quantity INTEGER NOT NULL,
     subtotal REAL NOT NULL
+  );`,
+
+  `CREATE TABLE IF NOT EXISTS uploaded_files (
+    id TEXT PRIMARY KEY,
+    filename TEXT UNIQUE NOT NULL,
+    mimeType TEXT NOT NULL,
+    data TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    createdAt TEXT NOT NULL
   );`
 ];
 
 async function main() {
   log(`\n${colors.bold}${colors.magenta}====================================================${colors.reset}`);
-  log(`${colors.bold}${colors.cyan}  🏓 COURT BOOKING TEMPLATE - CLIENT SETUP WIZARD   ${colors.reset}`);
+  log(`${colors.bold}${colors.cyan}  ðŸ“ COURT BOOKING TEMPLATE - CLIENT SETUP WIZARD   ${colors.reset}`);
   log(`${colors.bold}${colors.magenta}====================================================${colors.reset}\n`);
 
   let config = null;
@@ -261,9 +270,9 @@ async function main() {
     log(`\n${colors.bold}4. Court Setup & Rates:${colors.reset}`);
     const courtCountStr = await ask('Number of initial courts to create', '2');
     const courtCount = parseInt(courtCountStr, 10) || 2;
-    const defaultDayRateStr = await ask('Standard Daytime Hourly Rate (₱)', '350');
+    const defaultDayRateStr = await ask('Standard Daytime Hourly Rate (â‚±)', '350');
     const defaultDayRate = parseFloat(defaultDayRateStr) || 350;
-    const defaultNightRateStr = await ask('Evening Hourly Rate (₱)', '500');
+    const defaultNightRateStr = await ask('Evening Hourly Rate (â‚±)', '500');
     const defaultNightRate = parseFloat(defaultNightRateStr) || 500;
     const eveningStartTime = await ask('Evening Rate Start Time (24h format)', '17:00');
 
@@ -399,15 +408,15 @@ NEXT_PUBLIC_LOGO_DARK="${config.logoDark || '/the-paddle-logo-dark.png'}"
 
     // 6. Complete
     log(`\n${colors.bold}${colors.green}====================================================${colors.reset}`);
-    log(`${colors.bold}${colors.green}   🎉 SETUP COMPLETE! CLIENT SYSTEM IS READY!       ${colors.reset}`);
+    log(`${colors.bold}${colors.green}   ðŸŽ‰ SETUP COMPLETE! CLIENT SYSTEM IS READY!       ${colors.reset}`);
     log(`${colors.bold}${colors.green}====================================================${colors.reset}\n`);
 
     log(`${colors.bold}Client Summary:${colors.reset}`);
-    log(`• Brand Name:      ${colors.cyan}${config.brandName}${colors.reset}`);
-    log(`• Operating Hours: ${colors.cyan}${config.courtOpenTime} – ${config.courtCloseTime}${colors.reset}`);
-    log(`• Admin PIN:       ${colors.cyan}${config.adminPin}${colors.reset}`);
-    log(`• GCash Account:   ${colors.cyan}${config.gcashAccountName} (${config.gcashNumber})${colors.reset}`);
-    log(`• Courts Seeded:   ${colors.cyan}${config.courts?.length || 0} courts${colors.reset}`);
+    log(`â€¢ Brand Name:      ${colors.cyan}${config.brandName}${colors.reset}`);
+    log(`â€¢ Operating Hours: ${colors.cyan}${config.courtOpenTime} â€“ ${config.courtCloseTime}${colors.reset}`);
+    log(`â€¢ Admin PIN:       ${colors.cyan}${config.adminPin}${colors.reset}`);
+    log(`â€¢ GCash Account:   ${colors.cyan}${config.gcashAccountName} (${config.gcashNumber})${colors.reset}`);
+    log(`â€¢ Courts Seeded:   ${colors.cyan}${config.courts?.length || 0} courts${colors.reset}`);
 
     log(`\n${colors.bold}${colors.yellow}Render Environment Variables to set in Render Dashboard:${colors.reset}`);
     log(`----------------------------------------------------`);

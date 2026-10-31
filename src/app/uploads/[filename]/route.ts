@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
+import db from '@/lib/db';
 
 export async function GET(
   request: Request,
@@ -11,6 +12,31 @@ export async function GET(
 
     // Prevent directory traversal
     const safeFilename = path.basename(filename);
+
+    // 1. Check persistent Turso database storage first
+    try {
+      const dbResult = await db.execute({
+        sql: 'SELECT mimeType, data FROM uploaded_files WHERE filename = ?',
+        args: [safeFilename]
+      });
+
+      if (dbResult.rows.length > 0 && dbResult.rows[0]?.data) {
+        const row = dbResult.rows[0];
+        const fileBuffer = Buffer.from(row.data, 'base64');
+        const contentType = row.mimeType || 'image/jpeg';
+
+        return new NextResponse(fileBuffer, {
+          headers: {
+            'Content-Type': contentType,
+            'Cache-Control': 'public, max-age=31536000, immutable'
+          }
+        });
+      }
+    } catch (dbErr) {
+      console.error('Error fetching file from database:', dbErr);
+    }
+
+    // 2. Fallback to local disk cache (for local dev or legacy files)
     const filePath = path.join(process.cwd(), 'public', 'uploads', safeFilename);
 
     try {

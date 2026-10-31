@@ -127,6 +127,7 @@ export default function AdminPage() {
 
   // View Receipt Modal
   const [viewReceiptUrl, setViewReceiptUrl] = useState<string | null>(null);
+  const [viewReceiptError, setViewReceiptError] = useState(false);
 
   // Dedicated Payment Proof Verification Center states
   const [proofFilter, setProofFilter] = useState<'ALL' | 'PENDING' | 'PAID' | 'CANCELLED'>('PENDING');
@@ -134,6 +135,9 @@ export default function AdminPage() {
   const [proofActionLoading, setProofActionLoading] = useState(false);
   const [proofNotes, setProofNotes] = useState('');
   const [copiedRef, setCopiedRef] = useState(false);
+  const [failedReceipts, setFailedReceipts] = useState<Record<string, boolean>>({});
+  const [uploadingReplacementProof, setUploadingReplacementProof] = useState<boolean>(false);
+  const [uploadReplacementSuccess, setUploadReplacementSuccess] = useState<boolean>(false);
 
   // Store, POS & Inventory states
   const [products, setProducts] = useState<Product[]>([]);
@@ -488,6 +492,7 @@ export default function AdminPage() {
       paymentMethod?: 'CASH' | 'GCASH';
       notes?: string;
       gcashReference?: string;
+      receiptUrl?: string;
     }
   ) => {
     try {
@@ -572,6 +577,89 @@ export default function AdminPage() {
       console.error(err);
     } finally {
       setProofActionLoading(false);
+    }
+  };
+
+  // Upload or replace customer payment proof from verification modal
+  const handleReplaceProofUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !verifyingBooking) return;
+
+    try {
+      setUploadingReplacementProof(true);
+      setUploadReplacementSuccess(false);
+
+      // Lightweight client-side compression
+      let fileToUpload = file;
+      if (file.type.startsWith('image/')) {
+        fileToUpload = await new Promise<File>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const MAX_DIM = 1400;
+              let width = img.width;
+              let height = img.height;
+              if (width > height && width > MAX_DIM) {
+                height = Math.round((height * MAX_DIM) / width);
+                width = MAX_DIM;
+              } else if (height > MAX_DIM) {
+                width = Math.round((width * MAX_DIM) / height);
+                height = MAX_DIM;
+              }
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return resolve(file);
+              ctx.drawImage(img, 0, 0, width, height);
+              canvas.toBlob(
+                (blob) => {
+                  if (!blob) return resolve(file);
+                  resolve(new File([blob], file.name.replace(/\.[^/.]+$/, '.jpg'), { type: 'image/jpeg' }));
+                },
+                'image/jpeg',
+                0.85
+              );
+            };
+            img.onerror = () => resolve(file);
+            img.src = event.target?.result as string;
+          };
+          reader.onerror = () => resolve(file);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      const formData = new FormData();
+      formData.append('file', fileToUpload);
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+
+      if (data.success && data.url) {
+        await updateBookingStatus(verifyingBooking.id, {
+          receiptUrl: data.url
+        });
+
+        const updatedUrl = data.url;
+        setVerifyingBooking((prev) => (prev ? { ...prev, receiptUrl: updatedUrl } : null));
+        setBookings((prev) =>
+          prev.map((b) => (b.id === verifyingBooking.id ? { ...b, receiptUrl: updatedUrl } : b))
+        );
+        setFailedReceipts((prev) => ({ ...prev, [verifyingBooking.id]: false }));
+        setUploadReplacementSuccess(true);
+        setTimeout(() => setUploadReplacementSuccess(false), 3000);
+      } else {
+        alert(data.error || 'Failed to upload replacement proof.');
+      }
+    } catch (err) {
+      console.error('Error replacing proof screenshot:', err);
+      alert('Failed to upload proof screenshot.');
+    } finally {
+      setUploadingReplacementProof(false);
     }
   };
 
@@ -2588,7 +2676,10 @@ export default function AdminPage() {
                             )}
                             {b.receiptUrl && (
                               <button
-                                onClick={() => setViewReceiptUrl(b.receiptUrl || null)}
+                                onClick={() => {
+                                  setViewReceiptError(false);
+                                  setViewReceiptUrl(b.receiptUrl || null);
+                                }}
                                 className="mt-1 flex items-center gap-1 text-[10px] text-blue-600 dark:text-blue-400 hover:underline font-semibold cursor-pointer"
                               >
                                 <Eye className="w-3 h-3" /> View Proof
@@ -2813,7 +2904,7 @@ export default function AdminPage() {
                         </div>
 
                         {/* Receipt Thumbnail */}
-                        {booking.receiptUrl ? (
+                        {booking.receiptUrl && !failedReceipts[booking.id] ? (
                           <div
                             onClick={() => openVerificationModal(booking)}
                             className="relative group rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-black h-40 cursor-pointer flex items-center justify-center"
@@ -2822,6 +2913,7 @@ export default function AdminPage() {
                             <img
                               src={booking.receiptUrl}
                               alt={`Receipt proof for ${booking.bookingCode}`}
+                              onError={() => setFailedReceipts((prev) => ({ ...prev, [booking.id]: true }))}
                               className="h-full w-full object-contain group-hover:scale-105 transition-transform duration-200"
                             />
                             <div className="absolute inset-0 bg-slate-950/40 group-hover:bg-slate-950/20 transition-colors flex items-center justify-center">
@@ -2832,13 +2924,20 @@ export default function AdminPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="rounded-xl border border-dashed border-amber-300 dark:border-amber-800/80 bg-amber-50/50 dark:bg-amber-950/20 p-4 text-center">
+                          <div
+                            onClick={() => openVerificationModal(booking)}
+                            className="rounded-xl border border-dashed border-amber-300 dark:border-amber-800/80 bg-amber-50/50 dark:bg-amber-950/20 p-4 text-center cursor-pointer hover:border-amber-400 transition-colors"
+                          >
                             <AlertCircle className="w-6 h-6 mx-auto text-amber-500 mb-1" />
                             <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
-                              No Receipt Uploaded
+                              {failedReceipts[booking.id] ? 'Proof File Unavailable' : 'No Receipt Uploaded'}
                             </p>
                             <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-                              {booking.gcashReference ? `Customer submitted Ref: ${booking.gcashReference}` : 'Customer chosen GCash without screenshot'}
+                              {failedReceipts[booking.id]
+                                ? 'Screenshot cleared during previous restart. Click to review or attach.'
+                                : booking.gcashReference
+                                ? `Customer submitted Ref: ${booking.gcashReference}`
+                                : 'Customer chose GCash without screenshot'}
                             </p>
                           </div>
                         )}
@@ -4707,18 +4806,32 @@ export default function AdminPage() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <h3 className="text-sm font-bold text-slate-900 dark:text-white">GCash Payment Proof</h3>
               <button
-                onClick={() => setViewReceiptUrl(null)}
+                onClick={() => {
+                  setViewReceiptUrl(null);
+                  setViewReceiptError(false);
+                }}
                 className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
             <div className="mt-4 max-h-[70vh] overflow-y-auto rounded-xl bg-black p-2 flex items-center justify-center">
-              <img
-                src={viewReceiptUrl}
-                alt="Payment receipt proof"
-                className="max-h-[65vh] w-auto object-contain rounded-lg"
-              />
+              {viewReceiptError ? (
+                <div className="text-center p-6 text-slate-400">
+                  <AlertCircle className="w-10 h-10 mx-auto mb-2 text-amber-500" />
+                  <p className="font-bold text-sm text-white">Proof Image Unavailable</p>
+                  <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                    This screenshot was removed during a previous server restart before cloud persistence was enabled.
+                  </p>
+                </div>
+              ) : (
+                <img
+                  src={viewReceiptUrl}
+                  alt="Payment receipt proof"
+                  onError={() => setViewReceiptError(true)}
+                  className="max-h-[65vh] w-auto object-contain rounded-lg"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -4991,21 +5104,46 @@ export default function AdminPage() {
                 </span>
 
                 <div className="flex-1 min-h-[300px] sm:min-h-[380px] rounded-2xl bg-black border border-slate-200 dark:border-slate-800 p-2 flex items-center justify-center overflow-hidden relative">
-                  {verifyingBooking.receiptUrl ? (
+                  {verifyingBooking.receiptUrl && !failedReceipts[verifyingBooking.id] ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={verifyingBooking.receiptUrl}
                       alt="GCash Payment Receipt"
+                      onError={() => setFailedReceipts((prev) => ({ ...prev, [verifyingBooking.id]: true }))}
                       className="max-h-[50vh] sm:max-h-[55vh] w-auto object-contain rounded-xl hover:scale-105 transition-transform duration-300"
                     />
                   ) : (
                     <div className="text-center p-6 text-slate-400">
                       <AlertCircle className="w-10 h-10 mx-auto mb-2 text-amber-500" />
-                      <p className="font-bold text-sm text-white">No Image Receipt Uploaded</p>
+                      <p className="font-bold text-sm text-white">
+                        {failedReceipts[verifyingBooking.id] ? 'Proof File Unavailable' : 'No Image Receipt Uploaded'}
+                      </p>
                       <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                        The player chose GCash at checkout but did not attach an image receipt screenshot.
+                        {failedReceipts[verifyingBooking.id]
+                          ? 'This screenshot was removed during a previous server restart before cloud persistence was enabled. You can attach a screenshot below.'
+                          : 'The player chose GCash at checkout but did not attach an image receipt screenshot.'}
                       </p>
                     </div>
+                  )}
+                </div>
+
+                {/* Attach or Replace Screenshot Button */}
+                <div className="mt-2.5 flex items-center justify-between gap-2">
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors">
+                    <Upload className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+                    <span>{uploadingReplacementProof ? 'Uploading...' : 'Attach / Replace Proof Screenshot'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingReplacementProof}
+                      onChange={handleReplaceProofUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  {uploadReplacementSuccess && (
+                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5" /> Proof saved!
+                    </span>
                   )}
                 </div>
               </div>

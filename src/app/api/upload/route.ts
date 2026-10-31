@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs/promises';
 import { put } from '@vercel/blob';
+import db from '@/lib/db';
 
 export async function POST(request: Request) {
   try {
@@ -69,12 +70,36 @@ export async function POST(request: Request) {
       });
     }
 
-    // Local disk fallback for local development
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-    await fs.mkdir(uploadDir, { recursive: true });
+    // Persistent Storage in Turso Cloud Database
+    const base64Data = buffer.toString('base64');
+    const fileId = `file-${timestamp}-${Math.random().toString(36).substring(2, 9)}`;
 
-    const filePath = path.join(uploadDir, fileName);
-    await fs.writeFile(filePath, buffer);
+    try {
+      await db.execute({
+        sql: `INSERT OR REPLACE INTO uploaded_files (id, filename, mimeType, data, size, createdAt)
+              VALUES (?, ?, ?, ?, ?, ?)`,
+        args: [
+          fileId,
+          fileName,
+          file.type,
+          base64Data,
+          buffer.length,
+          new Date().toISOString()
+        ]
+      });
+    } catch (dbErr) {
+      console.warn('Failed to persist file in Turso database:', dbErr);
+    }
+
+    // Optional local disk cache for fast local access
+    try {
+      const uploadDir = path.join(process.cwd(), 'public', 'uploads');
+      await fs.mkdir(uploadDir, { recursive: true });
+      const filePath = path.join(uploadDir, fileName);
+      await fs.writeFile(filePath, buffer);
+    } catch {
+      // Ignored if local filesystem is read-only or ephemeral
+    }
 
     const publicUrl = `/uploads/${fileName}`;
 

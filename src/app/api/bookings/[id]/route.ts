@@ -34,7 +34,7 @@ export async function PATCH(
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const { bookingStatus, paymentStatus, paymentMethod, gcashReference, notes } = body;
+    const { bookingStatus, paymentStatus, paymentMethod, gcashReference, notes, receiptUrl } = body;
 
     const existing = await db.execute({ sql: 'SELECT * FROM bookings WHERE id = ?', args: [id] });
     if (existing.rows.length === 0) {
@@ -47,7 +47,8 @@ export async function PATCH(
                 paymentStatus = COALESCE(?, paymentStatus),
                 paymentMethod = COALESCE(?, paymentMethod),
                 gcashReference = COALESCE(?, gcashReference),
-                notes = COALESCE(?, notes)
+                notes = COALESCE(?, notes),
+                receiptUrl = COALESCE(?, receiptUrl)
             WHERE id = ?`,
       args: [
         bookingStatus !== undefined ? bookingStatus : null,
@@ -55,6 +56,7 @@ export async function PATCH(
         paymentMethod !== undefined ? paymentMethod : null,
         gcashReference !== undefined ? gcashReference : null,
         notes !== undefined ? notes : null,
+        receiptUrl !== undefined ? receiptUrl : null,
         id
       ]
     });
