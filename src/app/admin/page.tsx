@@ -1375,13 +1375,18 @@ export default function AdminPage() {
     return matchesSearch && matchesCourt && matchesStatus && matchesDate && matchesType;
   });
 
+  // Action required helper: non-cancelled booking with unpaid balance or unconfirmed status
+  const isBookingActionRequired = (bk: Booking) => {
+    return bk.bookingStatus !== 'CANCELLED' && (bk.paymentStatus !== 'PAID' || bk.bookingStatus !== 'CONFIRMED');
+  };
+
   // Priority-sorted bookings: pending verifications and unpaid desk collections floated to the top
   const prioritizedBookings = useMemo(() => {
     return [...filteredBookings].sort((a, b) => {
       const getRank = (bk: Booking) => {
         if (bk.bookingStatus === 'CANCELLED') return 3;
         if (bk.paymentStatus === 'VERIFICATION_PENDING') return 0;
-        if (bk.paymentStatus === 'UNPAID') return 1;
+        if (bk.paymentStatus === 'UNPAID' || bk.bookingStatus === 'PENDING') return 1;
         return 2;
       };
       const rankA = getRank(a);
@@ -1395,9 +1400,19 @@ export default function AdminPage() {
     });
   }, [filteredBookings]);
 
+  // Count of bookings awaiting action within the currently filtered table view
+  const viewAwaitingActionCount = useMemo(() => {
+    return prioritizedBookings.filter(isBookingActionRequired).length;
+  }, [prioritizedBookings]);
+
+  // Total bookings awaiting action across the entire database
+  const totalAwaitingActionCount = useMemo(() => {
+    return bookings.filter(isBookingActionRequired).length;
+  }, [bookings]);
+
   // Calculate statistics
   const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && b.bookingDate === todayStr).length : 0;
-  const pendingPaymentCount = bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && (b.paymentStatus === 'VERIFICATION_PENDING' || b.paymentStatus === 'UNPAID')).length;
+  const pendingPaymentCount = totalAwaitingActionCount;
   const pendingProofsCount = bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && (b.paymentStatus === 'VERIFICATION_PENDING' || (b.paymentMethod === 'GCASH' && b.paymentStatus !== 'PAID' && b.receiptUrl))).length;
 
   // Live banner preview calculation using shared computeNoticeBannerText
@@ -2714,7 +2729,7 @@ export default function AdminPage() {
                       </tr>
                     ) : (
                       prioritizedBookings.map((b) => {
-                        const isActionRequired = b.bookingStatus !== 'CANCELLED' && b.paymentStatus !== 'PAID';
+                        const isActionRequired = isBookingActionRequired(b);
                         return (
                         <tr
                           key={b.id}
@@ -2730,7 +2745,11 @@ export default function AdminPage() {
                               <span className="text-lime-600 dark:text-lime-400">{b.bookingCode}</span>
                               {isActionRequired && (
                                 <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
-                                  {b.paymentStatus === 'VERIFICATION_PENDING' ? 'Proof' : 'Desk'}
+                                  {b.paymentStatus === 'VERIFICATION_PENDING'
+                                    ? 'Proof'
+                                    : b.paymentStatus === 'UNPAID'
+                                    ? 'Desk'
+                                    : 'Confirm'}
                                 </span>
                               )}
                             </div>
@@ -2878,14 +2897,25 @@ export default function AdminPage() {
 
               {/* Table Footer with Summary Counter */}
               <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-2">
-                <span>
-                  Showing <strong className="text-slate-700 dark:text-slate-200">{prioritizedBookings.length}</strong> bookings
-                  {pendingPaymentCount > 0 && (
-                    <span className="ml-1.5 inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold">
-                      • {pendingPaymentCount} awaiting action
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span>
+                    Showing <strong className="text-slate-700 dark:text-slate-200">{prioritizedBookings.length}</strong> {prioritizedBookings.length === 1 ? 'booking' : 'bookings'}
+                  </span>
+                  {viewAwaitingActionCount > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold">
+                      • {viewAwaitingActionCount} awaiting action
+                    </span>
+                  ) : prioritizedBookings.length > 0 ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                      • All confirmed
+                    </span>
+                  ) : null}
+                  {prioritizedBookings.length < bookings.length && totalAwaitingActionCount > viewAwaitingActionCount && (
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                      ({totalAwaitingActionCount} total awaiting in all dates)
                     </span>
                   )}
-                </span>
+                </div>
                 <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline">
                   Scroll table to view more • Pinned action items float to top
                 </span>
