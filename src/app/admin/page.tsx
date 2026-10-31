@@ -1375,6 +1375,26 @@ export default function AdminPage() {
     return matchesSearch && matchesCourt && matchesStatus && matchesDate && matchesType;
   });
 
+  // Priority-sorted bookings: pending verifications and unpaid desk collections floated to the top
+  const prioritizedBookings = useMemo(() => {
+    return [...filteredBookings].sort((a, b) => {
+      const getRank = (bk: Booking) => {
+        if (bk.bookingStatus === 'CANCELLED') return 3;
+        if (bk.paymentStatus === 'VERIFICATION_PENDING') return 0;
+        if (bk.paymentStatus === 'UNPAID') return 1;
+        return 2;
+      };
+      const rankA = getRank(a);
+      const rankB = getRank(b);
+      if (rankA !== rankB) return rankA - rankB;
+
+      // Tiebreaker: Booking date descending, then start time ascending
+      const dateCompare = (b.bookingDate || '').localeCompare(a.bookingDate || '');
+      if (dateCompare !== 0) return dateCompare;
+      return (a.startTime || '').localeCompare(b.startTime || '');
+    });
+  }, [filteredBookings]);
+
   // Calculate statistics
   const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && b.bookingDate === todayStr).length : 0;
   const pendingPaymentCount = bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && (b.paymentStatus === 'VERIFICATION_PENDING' || b.paymentStatus === 'UNPAID')).length;
@@ -2508,15 +2528,15 @@ export default function AdminPage() {
                   </div>
 
                   {/* Players List Table */}
-                  <div className="mt-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                  <div className="mt-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
                     {openPlayBookings.length === 0 ? (
                       <div className="p-5 text-center text-slate-400 dark:text-slate-500 text-xs">
                         No players registered for Morning Open Play on {targetDate || 'this date'} yet.
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
+                      <div className="overflow-x-auto overflow-y-auto max-h-[360px] custom-scrollbar">
                         <table className="w-full text-left text-xs min-w-[550px]">
-                          <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider text-[10px]">
+                          <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider text-[10px]">
                             <tr>
                               <th className="py-2 px-3">#</th>
                               <th className="py-2 px-3">Player Name</th>
@@ -2669,11 +2689,11 @@ export default function AdminPage() {
               </button>
             </div>
 
-            {/* Bookings Table with fluid mobile horizontal scroll */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl sm:rounded-2xl overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
+            {/* Bookings Table with fluid mobile horizontal scroll & bounded vertical scroll */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl sm:rounded-2xl overflow-hidden shadow-sm flex flex-col">
+              <div className="overflow-x-auto overflow-y-auto max-h-[440px] sm:max-h-[520px] custom-scrollbar">
                 <table className="w-full text-left text-xs min-w-[700px]">
-                  <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">
+                  <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase font-bold tracking-wider">
                     <tr>
                       <th className="py-3 px-3.5">Booking Code</th>
                       <th className="py-3 px-3.5">Player Details</th>
@@ -2686,18 +2706,34 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {filteredBookings.length === 0 ? (
+                    {prioritizedBookings.length === 0 ? (
                       <tr>
                         <td colSpan={8} className="py-8 text-center text-slate-400 dark:text-slate-500">
                           No bookings found matching current filters.
                         </td>
                       </tr>
                     ) : (
-                      filteredBookings.map((b) => (
-                        <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                      prioritizedBookings.map((b) => {
+                        const isActionRequired = b.bookingStatus !== 'CANCELLED' && b.paymentStatus !== 'PAID';
+                        return (
+                        <tr
+                          key={b.id}
+                          className={`transition-colors ${
+                            isActionRequired
+                              ? 'bg-amber-500/[0.04] dark:bg-amber-500/[0.08] hover:bg-amber-500/[0.08] dark:hover:bg-amber-500/[0.12] border-l-4 border-l-amber-500'
+                              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }`}
+                        >
                           {/* Code */}
-                          <td className="py-3 px-3.5 font-mono font-bold text-lime-600 dark:text-lime-400 whitespace-nowrap">
-                            {b.bookingCode}
+                          <td className="py-3 px-3.5 font-mono font-bold whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-lime-600 dark:text-lime-400">{b.bookingCode}</span>
+                              {isActionRequired && (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+                                  {b.paymentStatus === 'VERIFICATION_PENDING' ? 'Proof' : 'Desk'}
+                                </span>
+                              )}
+                            </div>
                           </td>
 
                           {/* Player */}
@@ -2833,10 +2869,26 @@ export default function AdminPage() {
                             </div>
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Table Footer with Summary Counter */}
+              <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Showing <strong className="text-slate-700 dark:text-slate-200">{prioritizedBookings.length}</strong> bookings
+                  {pendingPaymentCount > 0 && (
+                    <span className="ml-1.5 inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold">
+                      • {pendingPaymentCount} awaiting action
+                    </span>
+                  )}
+                </span>
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline">
+                  Scroll table to view more • Pinned action items float to top
+                </span>
               </div>
             </div>
           </div>
@@ -3524,11 +3576,11 @@ export default function AdminPage() {
                 </div>
 
                 {/* Products Table Card */}
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-                  <div className="overflow-x-auto scrollbar-thin">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold tracking-wider uppercase text-[10px]">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                  <div className="overflow-x-auto overflow-y-auto max-h-[440px] sm:max-h-[520px] custom-scrollbar">
+                    <table className="w-full text-left border-collapse text-xs min-w-[700px]">
+                      <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold tracking-wider uppercase text-[10px]">
                           <th className="py-3 px-4">Product Name</th>
                           <th className="py-3 px-4">Category</th>
                           <th className="py-3 px-4">Retail Price</th>
@@ -3626,6 +3678,16 @@ export default function AdminPage() {
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Table Footer */}
+                  <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                    <span>
+                      Showing <strong className="text-slate-700 dark:text-slate-200">{filteredInventoryProducts.length}</strong> product{filteredInventoryProducts.length === 1 ? '' : 's'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline">
+                      Scroll to view all items
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -3633,11 +3695,11 @@ export default function AdminPage() {
             {/* SUB-VIEW 3: SALES / ORDERS HISTORY */}
             {storeSubTab === 'history' && (
               <div className="space-y-4">
-                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-                  <div className="overflow-x-auto scrollbar-thin">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-semibold tracking-wider uppercase text-[10px]">
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm flex flex-col">
+                  <div className="overflow-x-auto overflow-y-auto max-h-[440px] sm:max-h-[520px] custom-scrollbar">
+                    <table className="w-full text-left border-collapse text-xs min-w-[700px]">
+                      <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm">
+                        <tr className="border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold tracking-wider uppercase text-[10px]">
                           <th className="py-3 px-4">Order #</th>
                           <th className="py-3 px-4">Date & Time</th>
                           <th className="py-3 px-4">Items Purchased</th>
@@ -3712,6 +3774,16 @@ export default function AdminPage() {
                         )}
                       </tbody>
                     </table>
+                  </div>
+
+                  {/* Table Footer */}
+                  <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                    <span>
+                      Showing <strong className="text-slate-700 dark:text-slate-200">{posOrders.length}</strong> order{posOrders.length === 1 ? '' : 's'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline">
+                      Scroll to view all orders
+                    </span>
                   </div>
                 </div>
               </div>
