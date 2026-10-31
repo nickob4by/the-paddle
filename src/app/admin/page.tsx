@@ -1701,45 +1701,89 @@ export default function AdminPage() {
             </div>
 
             {/* Timeframe Filter Controls & Expand/Collapse */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 self-start sm:self-auto w-full sm:w-auto">
-              <div className="flex flex-wrap items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 gap-0.5">
-                {(['TODAY', 'DATE', 'RANGE', 'WEEK', 'MONTH', 'ALL'] as const).map((tf) => (
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+              {/* Presets Segmented Bar */}
+              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800">
+                {(['TODAY', 'WEEK', 'MONTH', 'ALL'] as const).map((tf) => (
                   <button
                     key={tf}
                     onClick={() => {
                       setTimeFilter(tf);
-                      if (tf === 'DATE' && !selectedAnalyticsDate) {
-                        setSelectedAnalyticsDate(todayStr);
-                      }
-                      if (tf === 'RANGE' && !selectedAnalyticsDateEnd) {
-                        setSelectedAnalyticsDate(todayStr);
-                        setSelectedAnalyticsDateEnd(todayStr);
-                      }
+                      if (tf === 'TODAY' && todayStr) setSelectedAnalyticsDate(todayStr);
                     }}
-                    className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                       timeFilter === tf
                         ? 'bg-white dark:bg-slate-900 text-lime-600 dark:text-lime-400 shadow-sm'
                         : 'text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
                     }`}
                   >
-                    {tf === 'TODAY'
-                      ? 'Today'
-                      : tf === 'DATE'
-                      ? 'Pick Date'
-                      : tf === 'RANGE'
-                      ? 'Date Range'
-                      : tf === 'WEEK'
-                      ? '7 Days'
-                      : tf === 'MONTH'
-                      ? 'Month'
-                      : 'All Time'}
+                    {tf === 'TODAY' ? 'Today' : tf === 'WEEK' ? '7 Days' : tf === 'MONTH' ? 'Month' : 'All Time'}
                   </button>
                 ))}
               </div>
 
+              {/* Integrated Inline Date Navigator */}
+              <div
+                className={`inline-flex items-center gap-1 px-1.5 py-1 rounded-xl border transition-all ${
+                  timeFilter === 'DATE'
+                    ? 'bg-lime-500/10 border-lime-500/30 text-lime-700 dark:text-lime-400'
+                    : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => stepAnalyticsDay(-1)}
+                  className="p-1 rounded-lg hover:bg-white dark:hover:bg-slate-900 transition-colors cursor-pointer text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  title="Previous Day"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <input
+                  type="date"
+                  value={selectedAnalyticsDate || todayStr}
+                  onChange={(e) => {
+                    setSelectedAnalyticsDate(e.target.value);
+                    setTimeFilter('DATE');
+                  }}
+                  className="bg-transparent font-bold text-xs text-slate-900 dark:text-white focus:outline-none cursor-pointer [color-scheme:light] dark:[color-scheme:dark]"
+                  title="Pick a specific date"
+                />
+                <button
+                  type="button"
+                  onClick={() => stepAnalyticsDay(1)}
+                  className="p-1 rounded-lg hover:bg-white dark:hover:bg-slate-900 transition-colors cursor-pointer text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  title="Next Day"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Range Toggle Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (timeFilter === 'RANGE') {
+                    setTimeFilter('TODAY');
+                  } else {
+                    setTimeFilter('RANGE');
+                    if (!selectedAnalyticsDateEnd) setSelectedAnalyticsDateEnd(todayStr);
+                  }
+                }}
+                className={`p-2 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                  timeFilter === 'RANGE'
+                    ? 'bg-lime-500 text-slate-950 border-lime-500 shadow-sm'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                }`}
+                title={timeFilter === 'RANGE' ? 'Close Range View' : 'Multi-day Date Range Audit'}
+              >
+                <CalendarRange className="w-4 h-4" />
+                <span className="hidden md:inline">Range</span>
+              </button>
+
+              {/* Collapse/Expand Chart */}
               <button
                 onClick={() => setIsAnalyticsExpanded(!isAnalyticsExpanded)}
-                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer self-end sm:self-auto"
+                className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-colors cursor-pointer"
                 title={isAnalyticsExpanded ? 'Collapse Chart' : 'Expand Chart'}
               >
                 {isAnalyticsExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -1747,100 +1791,42 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Interactive Date Bar when in DATE or RANGE mode */}
-          {(timeFilter === 'DATE' || timeFilter === 'RANGE') && (
-            <div className="mb-4 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in duration-200">
-              {timeFilter === 'DATE' ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Calendar className="w-4 h-4 text-lime-600 dark:text-lime-400" />
-                    Viewing Date:
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => stepAnalyticsDay(-1)}
-                      className="p-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Previous Day"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <input
-                      type="date"
-                      value={selectedAnalyticsDate || todayStr}
-                      onChange={(e) => {
-                        setSelectedAnalyticsDate(e.target.value);
-                        setTimeFilter('DATE');
-                      }}
-                      className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-lime-500 cursor-pointer"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => stepAnalyticsDay(1)}
-                      className="p-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Next Day"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                  {selectedAnalyticsDate !== todayStr && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedAnalyticsDate(todayStr);
-                        setTimeFilter('TODAY');
-                      }}
-                      className="px-2 py-1 rounded-md bg-lime-500/15 text-lime-700 dark:text-lime-400 hover:bg-lime-500 hover:text-slate-950 font-bold text-[11px] transition-colors cursor-pointer"
-                    >
-                      Jump to Today
-                    </button>
-                  )}
-                  {selectedAnalyticsDate && (
-                    <span className="font-semibold text-slate-500 dark:text-slate-400 text-[11px] ml-1">
-                      ({new Date(selectedAnalyticsDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })})
-                    </span>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <CalendarRange className="w-4 h-4 text-lime-600 dark:text-lime-400" />
-                    Audit Range:
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="date"
-                      value={selectedAnalyticsDate || todayStr}
-                      onChange={(e) => setSelectedAnalyticsDate(e.target.value)}
-                      className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-lime-500"
-                    />
-                    <span className="text-slate-400 font-bold">to</span>
-                    <input
-                      type="date"
-                      value={selectedAnalyticsDateEnd || selectedAnalyticsDate || todayStr}
-                      onChange={(e) => setSelectedAnalyticsDateEnd(e.target.value)}
-                      className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-lime-500"
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* Table Sync Toggle Indicator */}
+          {/* Subtle Audit Bar (Only for Range mode) */}
+          {timeFilter === 'RANGE' && (
+            <div className="mb-4 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs animate-in fade-in duration-200">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setSyncTableWithDate(!syncTableWithDate)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    syncTableWithDate
-                      ? 'bg-lime-500/15 border-lime-500/30 text-lime-700 dark:text-lime-400'
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500'
-                  }`}
-                  title="Toggle whether the Operations Bookings table automatically filters to match this date selection"
-                >
-                  <span className={`w-2 h-2 rounded-full ${syncTableWithDate ? 'bg-lime-500 animate-pulse' : 'bg-slate-400'}`} />
-                  Sync Bookings Table: {syncTableWithDate ? 'Active' : 'Off'}
-                </button>
+                <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <CalendarRange className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+                  Date Range:
+                </span>
+                <input
+                  type="date"
+                  value={selectedAnalyticsDate || todayStr}
+                  onChange={(e) => setSelectedAnalyticsDate(e.target.value)}
+                  className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-lime-500"
+                />
+                <span className="text-slate-400 font-bold">to</span>
+                <input
+                  type="date"
+                  value={selectedAnalyticsDateEnd || selectedAnalyticsDate || todayStr}
+                  onChange={(e) => setSelectedAnalyticsDateEnd(e.target.value)}
+                  className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-900 dark:text-white focus:outline-none focus:border-lime-500"
+                />
               </div>
+
+              {/* Table Sync Toggle */}
+              <button
+                type="button"
+                onClick={() => setSyncTableWithDate(!syncTableWithDate)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  syncTableWithDate
+                    ? 'bg-lime-500/15 border-lime-500/30 text-lime-700 dark:text-lime-400'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${syncTableWithDate ? 'bg-lime-500 animate-pulse' : 'bg-slate-400'}`} />
+                Sync Table: {syncTableWithDate ? 'Active' : 'Off'}
+              </button>
             </div>
           )}
 
