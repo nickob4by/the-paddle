@@ -1185,14 +1185,13 @@ export default function AdminPage() {
     if (selectedDateFilter) {
       matchesDate = b.bookingDate === selectedDateFilter;
     } else if (syncTableWithDate) {
-      const cDate = (b.createdAt || '').split('T')[0] || '';
       if (timeFilter === 'TODAY') {
-        matchesDate = todayStr ? (b.bookingDate === todayStr || cDate === todayStr) : true;
+        matchesDate = todayStr ? b.bookingDate === todayStr : true;
       } else if (timeFilter === 'DATE') {
-        matchesDate = selectedAnalyticsDate ? (b.bookingDate === selectedAnalyticsDate || cDate === selectedAnalyticsDate) : true;
+        matchesDate = selectedAnalyticsDate ? b.bookingDate === selectedAnalyticsDate : true;
       } else if (timeFilter === 'RANGE') {
         const end = selectedAnalyticsDateEnd || selectedAnalyticsDate;
-        matchesDate = (b.bookingDate >= selectedAnalyticsDate && b.bookingDate <= end) || (cDate >= selectedAnalyticsDate && cDate <= end);
+        matchesDate = b.bookingDate >= selectedAnalyticsDate && b.bookingDate <= end;
       }
     }
 
@@ -1247,32 +1246,34 @@ export default function AdminPage() {
 
   const filterStartDateStr = getFilterStartDate();
 
-  // Filtered Bookings for the selected timeframe - ONLY verified & paid bookings reflect in income
+  // Filtered Bookings for the selected timeframe - includes all non-cancelled bookings on the reservation date
   const analyticsBookings = bookings.filter((b) => {
     if (b.bookingStatus === 'CANCELLED') return false;
-    
-    // Requirement: Income only reflects after payment is verified/paid
-    if (b.paymentStatus !== 'PAID') return false;
-    
-    // Standard cash flow accounting: match transaction created date in local time
-    const cDate = (b.createdAt || '').split('T')[0] || b.bookingDate || '';
 
     if (timeFilter === 'TODAY') {
-      return todayStr ? cDate === todayStr : true;
+      return todayStr ? b.bookingDate === todayStr : true;
     }
     if (timeFilter === 'DATE') {
-      return selectedAnalyticsDate ? cDate === selectedAnalyticsDate : true;
+      return selectedAnalyticsDate ? b.bookingDate === selectedAnalyticsDate : true;
     }
     if (timeFilter === 'RANGE') {
       if (!selectedAnalyticsDate) return true;
       const end = selectedAnalyticsDateEnd || selectedAnalyticsDate;
-      return cDate >= selectedAnalyticsDate && cDate <= end;
+      return b.bookingDate >= selectedAnalyticsDate && b.bookingDate <= end;
     }
-    if (timeFilter === 'ALL') return true;
-    return cDate >= filterStartDateStr;
+    if (timeFilter === 'WEEK') {
+      return b.bookingDate >= filterStartDateStr && b.bookingDate <= (todayStr || '9999-99-99');
+    }
+    if (timeFilter === 'MONTH') {
+      if (!currentDate) return true;
+      const curYear = currentDate.getFullYear();
+      const curMonth = String(currentDate.getMonth() + 1).padStart(2, '0');
+      return (b.bookingDate || '').startsWith(`${curYear}-${curMonth}`);
+    }
+    return true; // ALL
   });
 
-  // Filtered Store Orders for the selected timeframe
+  // Filtered Store Orders for the selected timeframe (attributed to purchase date)
   const analyticsOrders = posOrders.filter((o) => {
     if (!o.createdAt) return false;
     const orderDate = o.createdAt.split('T')[0];
@@ -1283,12 +1284,36 @@ export default function AdminPage() {
       const end = selectedAnalyticsDateEnd || selectedAnalyticsDate;
       return orderDate >= selectedAnalyticsDate && orderDate <= end;
     }
-    if (timeFilter === 'ALL') return true;
-    return orderDate >= filterStartDateStr;
+    if (timeFilter === 'WEEK') return orderDate >= filterStartDateStr && orderDate <= (todayStr || '9999-99-99');
+    if (timeFilter === 'MONTH') {
+      if (!currentDate) return true;
+      const curYear = currentDate.getFullYear();
+      const curMonth = String(currentDate.getMonth() + 1).padStart(2, '0');
+      return orderDate.startsWith(`${curYear}-${curMonth}`);
+    }
+    return true; // ALL
   });
 
-  // Aggregated Revenues for the timeframe
-  const analyticsCourtRev = analyticsBookings.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  // Breakdown: Regular Hourly Court Rentals
+  const standardBookings = analyticsBookings.filter((b) => b.bookingType !== 'OPEN_PLAY');
+  const standardCourtRev = standardBookings.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const standardCourtPaidRev = standardBookings
+    .filter((b) => b.paymentStatus === 'PAID')
+    .reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+
+  // Breakdown: Morning Open Play Passes (130/pass)
+  const openPlayBookings = analyticsBookings.filter((b) => b.bookingType === 'OPEN_PLAY');
+  const openPlayRev = openPlayBookings.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const openPlayPaidRev = openPlayBookings
+    .filter((b) => b.paymentStatus === 'PAID')
+    .reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+
+  // Combined Court & Open Play Totals
+  const analyticsCourtRev = standardCourtRev + openPlayRev;
+  const analyticsCourtPaidRev = standardCourtPaidRev + openPlayPaidRev;
+  const analyticsCourtPendingRev = analyticsCourtRev - analyticsCourtPaidRev;
+
+  // Mini Store Sales & Combined Total Revenue
   const analyticsStoreRev = analyticsOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
   const analyticsTotalRev = analyticsCourtRev + analyticsStoreRev;
 
@@ -1345,7 +1370,7 @@ export default function AdminPage() {
       const mobileLabel = `${d.toLocaleDateString('en-US', { weekday: 'narrow' })} ${d.getDate()}`;
 
       const cRev = analyticsBookings
-        .filter((b) => ((b.createdAt || '').split('T')[0] || b.bookingDate) === dStr)
+        .filter((b) => b.bookingDate === dStr)
         .reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
 
       const sRev = analyticsOrders
@@ -1370,8 +1395,8 @@ export default function AdminPage() {
     weeks.forEach(({ label, mobileLabel, startDay, endDay }) => {
       const cRev = bookings
         .filter((b) => {
-          if (b.bookingStatus === 'CANCELLED' || b.paymentStatus !== 'PAID') return false;
-          const targetDate = b.bookingDate || (b.createdAt || '').split('T')[0];
+          if (b.bookingStatus === 'CANCELLED') return false;
+          const targetDate = b.bookingDate;
           if (!targetDate) return false;
           const [by, bm, bd] = targetDate.split('-').map(Number);
           return by === curYear && bm === curMonth + 1 && bd >= startDay && bd <= endDay;
@@ -1400,10 +1425,8 @@ export default function AdminPage() {
 
       const cRev = bookings
         .filter((b) => {
-          if (b.bookingStatus === 'CANCELLED' || b.paymentStatus !== 'PAID') return false;
-          const bDate = b.bookingDate;
-          const cDate = (b.createdAt || '').split('T')[0];
-          return bDate === dStr || cDate === dStr;
+          if (b.bookingStatus === 'CANCELLED') return false;
+          return b.bookingDate === dStr;
         })
         .reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
 
@@ -1833,43 +1856,77 @@ export default function AdminPage() {
           {/* KPI Metrics Cards (Recalculates based on Timeframe Filter) */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             {/* Total Filtered Revenue */}
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-lime-500/10 via-white to-white dark:from-lime-500/10 dark:via-slate-900 dark:to-slate-900 border border-lime-500/30 shadow-sm">
-              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
-                <span className="font-bold text-lime-700 dark:text-lime-400 uppercase tracking-wide">
-                  {timeFilter === 'TODAY'
-                    ? "Today's Revenue"
-                    : timeFilter === 'DATE'
-                    ? `Revenue (${selectedAnalyticsDate})`
-                    : timeFilter === 'RANGE'
-                    ? 'Period Revenue'
-                    : timeFilter === 'WEEK'
-                    ? '7-Day Revenue'
-                    : timeFilter === 'MONTH'
-                    ? 'Monthly Revenue'
-                    : 'All-Time Revenue'}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-lime-500/10 via-white to-white dark:from-lime-500/10 dark:via-slate-900 dark:to-slate-900 border border-lime-500/30 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
+                  <span className="font-bold text-lime-700 dark:text-lime-400 uppercase tracking-wide">
+                    {timeFilter === 'TODAY'
+                      ? "Today's Revenue"
+                      : timeFilter === 'DATE'
+                      ? `Revenue (${selectedAnalyticsDate})`
+                      : timeFilter === 'RANGE'
+                      ? 'Period Revenue'
+                      : timeFilter === 'WEEK'
+                      ? '7-Day Revenue'
+                      : timeFilter === 'MONTH'
+                      ? 'Monthly Revenue'
+                      : 'All-Time Revenue'}
+                  </span>
+                  <DollarSign className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+                </div>
+                <span className="text-2xl sm:text-3xl font-black text-slate-950 dark:text-white mt-1.5 block">
+                  ₱{analyticsTotalRev.toLocaleString()}
                 </span>
-                <DollarSign className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
               </div>
-              <span className="text-2xl sm:text-3xl font-black text-slate-950 dark:text-white mt-1.5 block">
-                ₱{analyticsTotalRev.toLocaleString()}
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
-                Courts: ₱{analyticsCourtRev.toLocaleString()} • Store: ₱{analyticsStoreRev.toLocaleString()}
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 block">
+                Courts: ₱{standardCourtRev.toLocaleString()} • Open Play: ₱{openPlayRev.toLocaleString()} • Store: ₱{analyticsStoreRev.toLocaleString()}
               </span>
             </div>
 
-            {/* Court Rentals Revenue */}
-            <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
-                <span className="font-semibold uppercase tracking-wide">Court Rentals</span>
-                <Calendar className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+            {/* Court & Open Play Combined KPI Card */}
+            <div className="p-4 rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[11px]">
+                  <span className="font-semibold uppercase tracking-wide">Court & Open Play</span>
+                  <Calendar className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+                </div>
+                {/* Total */}
+                <span className="text-2xl sm:text-3xl font-black text-lime-600 dark:text-lime-400 mt-1.5 block">
+                  ₱{analyticsCourtRev.toLocaleString()}
+                </span>
               </div>
-              <span className="text-2xl sm:text-3xl font-black text-lime-600 dark:text-lime-400 mt-1.5 block">
-                ₱{analyticsCourtRev.toLocaleString()}
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
-                {analyticsBookings.length} bookings confirmed
-              </span>
+
+              {/* Breakdown directly below the total */}
+              <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-1 text-[11px]">
+                <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                  <span className="flex items-center gap-1 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-lime-500" /> Hourly Courts:
+                  </span>
+                  <span className="font-bold">
+                    ₱{standardCourtRev.toLocaleString()}{' '}
+                    <span className="text-[10px] text-slate-400 font-normal">({standardBookings.length})</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                  <span className="flex items-center gap-1 font-medium">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500" /> Open Play:
+                  </span>
+                  <span className="font-bold">
+                    ₱{openPlayRev.toLocaleString()}{' '}
+                    <span className="text-[10px] text-slate-400 font-normal">({openPlayBookings.length} passes)</span>
+                  </span>
+                </div>
+                {analyticsCourtPendingRev > 0 ? (
+                  <div className="text-[10px] text-amber-600 dark:text-amber-400 pt-0.5 flex justify-between font-semibold border-t border-dashed border-slate-200 dark:border-slate-700/60 mt-1">
+                    <span>Paid: ₱{analyticsCourtPaidRev.toLocaleString()}</span>
+                    <span>Pending at desk: ₱{analyticsCourtPendingRev.toLocaleString()}</span>
+                  </div>
+                ) : (
+                  <div className="text-[10px] text-emerald-600 dark:text-emerald-400 pt-0.5 font-medium">
+                    All {analyticsBookings.length} bookings paid
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Mini Store Sales */}
