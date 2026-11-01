@@ -83,7 +83,9 @@ import {
   Sparkles,
   Lock,
   KeyRound,
-  EyeOff
+  EyeOff,
+  Banknote,
+  Wallet
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -108,6 +110,7 @@ export default function AdminPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('ALL');
   const [selectedDateFilter, setSelectedDateFilter] = useState('');
   const [bookingTypeFilter, setBookingTypeFilter] = useState<'ALL' | 'STANDARD' | 'OPEN_PLAY'>('ALL');
+  const [selectedPaymentMethodFilter, setSelectedPaymentMethodFilter] = useState<'ALL' | 'CASH' | 'GCASH'>('ALL');
   const [rosterDate, setRosterDate] = useState<string>('');
 
   // Modals
@@ -1438,7 +1441,11 @@ export default function AdminPage() {
       (bookingTypeFilter === 'OPEN_PLAY' && b.bookingType === 'OPEN_PLAY') ||
       (bookingTypeFilter === 'STANDARD' && b.bookingType !== 'OPEN_PLAY');
 
-    return matchesSearch && matchesCourt && matchesStatus && matchesDate && matchesType;
+    const matchesPaymentMethod =
+      selectedPaymentMethodFilter === 'ALL' ||
+      (b.paymentMethod || 'CASH') === selectedPaymentMethodFilter;
+
+    return matchesSearch && matchesCourt && matchesStatus && matchesDate && matchesType && matchesPaymentMethod;
   });
 
   // Action required helper: non-cancelled booking with unpaid balance or unconfirmed status
@@ -1475,6 +1482,31 @@ export default function AdminPage() {
   const totalAwaitingActionCount = useMemo(() => {
     return bookings.filter(isBookingActionRequired).length;
   }, [bookings]);
+
+  // Live financial totals for the currently filtered bookings table
+  const visiblePaidBookings = useMemo(() => {
+    return prioritizedBookings.filter((b) => b.paymentStatus === 'PAID');
+  }, [prioritizedBookings]);
+  const visiblePaidTotal = useMemo(() => {
+    return visiblePaidBookings.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  }, [visiblePaidBookings]);
+  const visibleCashTotal = useMemo(() => {
+    return visiblePaidBookings.filter((b) => (b.paymentMethod || 'CASH') === 'CASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  }, [visiblePaidBookings]);
+  const visibleGcashTotal = useMemo(() => {
+    return visiblePaidBookings.filter((b) => b.paymentMethod === 'GCASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  }, [visiblePaidBookings]);
+
+  // Live financial totals for POS store orders table
+  const posTotalSales = useMemo(() => {
+    return posOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  }, [posOrders]);
+  const posCashSales = useMemo(() => {
+    return posOrders.filter((o) => (o.paymentMethod || 'CASH') === 'CASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  }, [posOrders]);
+  const posGcashSales = useMemo(() => {
+    return posOrders.filter((o) => o.paymentMethod === 'GCASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  }, [posOrders]);
 
   // Calculate statistics
   const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && b.bookingDate === todayStr).length : 0;
@@ -1592,14 +1624,19 @@ export default function AdminPage() {
   const analyticsTotalPaidRev = analyticsCourtPaidRev + analyticsStoreRev;
   const analyticsTotalRev = analyticsCourtRev + analyticsStoreRev;
 
-  // Payment method breakdowns (Cash vs GCash)
-  const analyticsCashCourt = analyticsBookings.filter((b) => b.paymentMethod === 'CASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
-  const analyticsCashStore = analyticsOrders.filter((o) => o.paymentMethod === 'CASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
-  const analyticsCashTotal = analyticsCashCourt + analyticsCashStore;
+  // Separate Cash vs GCash Collections (Strictly Confirmed Paid for 100% Reconciliation with analyticsTotalPaidRev)
+  const analyticsPaidBookings = analyticsBookings.filter((b) => b.paymentStatus === 'PAID');
+  const analyticsCashPaidCourt = analyticsPaidBookings.filter((b) => (b.paymentMethod || 'CASH') === 'CASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const analyticsCashPaidStore = analyticsOrders.filter((o) => (o.paymentMethod || 'CASH') === 'CASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  const analyticsCashPaidTotal = analyticsCashPaidCourt + analyticsCashPaidStore;
 
-  const analyticsGcashCourt = analyticsBookings.filter((b) => b.paymentMethod === 'GCASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
-  const analyticsGcashStore = analyticsOrders.filter((o) => o.paymentMethod === 'GCASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
-  const analyticsGcashTotal = analyticsGcashCourt + analyticsGcashStore;
+  const analyticsGcashPaidCourt = analyticsPaidBookings.filter((b) => b.paymentMethod === 'GCASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const analyticsGcashPaidStore = analyticsOrders.filter((o) => o.paymentMethod === 'GCASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  const analyticsGcashPaidTotal = analyticsGcashPaidCourt + analyticsGcashPaidStore;
+
+  // Pending Collections at Counter / Verification (Isolated, never added into confirmed revenue)
+  const analyticsPendingCashCourt = pendingCourtBookings.filter((b) => (b.paymentMethod || 'CASH') === 'CASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  const analyticsPendingGcashCourt = pendingCourtBookings.filter((b) => b.paymentMethod === 'GCASH').reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
 
   // Chart Series generator (Responsive for mobile screens)
   const chartDays: Array<{ label: string; mobileLabel: string; dateStr: string; courtRev: number; storeRev: number; total: number }> = [];
@@ -2128,10 +2165,18 @@ export default function AdminPage() {
             </div>
           )}
 
-          {/* KPI Metrics Cards (Recalculates based on Timeframe Filter) */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
-            {/* Total Filtered Revenue - Confirmed / Paid Income Only */}
-            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-gradient-to-br from-lime-500/10 via-white to-white dark:from-lime-500/10 dark:via-slate-900 dark:to-slate-900 border border-lime-500/30 shadow-sm flex flex-col justify-between">
+          {/* KPI Metrics Cards (5 Dedicated Headline Cards with Interactive Quick-Filtering) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
+            {/* Card 1: Total Revenue - Confirmed / Paid Income Only */}
+            <div
+              onClick={() => setSelectedPaymentMethodFilter('ALL')}
+              className={`col-span-2 sm:col-span-1 p-3 sm:p-4 rounded-xl sm:rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all ${
+                selectedPaymentMethodFilter === 'ALL'
+                  ? 'bg-gradient-to-br from-lime-500/10 via-white to-white dark:from-lime-500/10 dark:via-slate-900 dark:to-slate-900 border-lime-500/50 ring-2 ring-lime-500/30'
+                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-lime-400'
+              }`}
+              title="Click to show all payment methods in table"
+            >
               <div>
                 <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] sm:text-[11px]">
                   <span className="font-bold text-lime-700 dark:text-lime-400 uppercase tracking-wide">
@@ -2157,25 +2202,113 @@ export default function AdminPage() {
                 </div>
               </div>
               <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800 space-y-0.5 text-[10px] text-slate-500 dark:text-slate-400">
-                <p className="truncate">
-                  Courts: ₱{standardCourtPaidRev.toLocaleString()} • Play: ₱{openPlayPaidRev.toLocaleString()} • Store: ₱{analyticsStoreRev.toLocaleString()}
-                </p>
+                <div className="flex items-center justify-between font-medium">
+                  <span className="text-emerald-600 dark:text-emerald-400">Cash: ₱{analyticsCashPaidTotal.toLocaleString()}</span>
+                  <span className="text-blue-600 dark:text-blue-400">GCash: ₱{analyticsGcashPaidTotal.toLocaleString()}</span>
+                </div>
                 {analyticsCourtPendingRev > 0 && (
-                  <p className="text-amber-600 dark:text-amber-400 font-semibold truncate">
+                  <p className="text-amber-600 dark:text-amber-400 font-semibold truncate pt-0.5">
                     Pending at desk: ₱{analyticsCourtPendingRev.toLocaleString()}
                   </p>
                 )}
               </div>
             </div>
 
-            {/* Court & Open Play Confirmed Revenue Card */}
+            {/* Card 2: Cash Revenue Card (Physical in-drawer cash) */}
+            <div
+              onClick={() => setSelectedPaymentMethodFilter((prev) => (prev === 'CASH' ? 'ALL' : 'CASH'))}
+              className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all ${
+                selectedPaymentMethodFilter === 'CASH'
+                  ? 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-500 ring-2 ring-emerald-500/50'
+                  : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 hover:border-emerald-400'
+              }`}
+              title="Click to filter table to Cash bookings"
+            >
+              <div>
+                <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] sm:text-[11px]">
+                  <span className="font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Cash Revenue
+                  </span>
+                  <Banknote className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                </div>
+                <div className="flex items-baseline gap-1.5 mt-1 sm:mt-1.5">
+                  <span className="text-xl sm:text-2xl lg:text-3xl font-black text-emerald-600 dark:text-emerald-400 block tracking-tight">
+                    ₱{analyticsCashPaidTotal.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">Cash</span>
+                </div>
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-0.5 text-[10px] text-slate-600 dark:text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span>Courts: ₱{analyticsCashPaidCourt.toLocaleString()}</span>
+                  <span>Store: ₱{analyticsCashPaidStore.toLocaleString()}</span>
+                </div>
+                {analyticsPendingCashCourt > 0 ? (
+                  <p className="text-amber-600 dark:text-amber-400 font-semibold truncate pt-0.5">
+                    Uncollected: ₱{analyticsPendingCashCourt.toLocaleString()}
+                  </p>
+                ) : (
+                  <p className="text-emerald-600 dark:text-emerald-400 text-[9px] pt-0.5 font-medium">
+                    ✓ All cash collected
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Card 3: GCash Revenue Card (Digital wallet collections) */}
+            <div
+              onClick={() => setSelectedPaymentMethodFilter((prev) => (prev === 'GCASH' ? 'ALL' : 'GCASH'))}
+              className={`p-3 sm:p-4 rounded-xl sm:rounded-2xl border shadow-sm flex flex-col justify-between cursor-pointer transition-all ${
+                selectedPaymentMethodFilter === 'GCASH'
+                  ? 'bg-blue-50/90 dark:bg-blue-950/30 border-blue-500 ring-2 ring-blue-500/50'
+                  : 'bg-slate-50/70 dark:bg-slate-800/50 border-slate-200 dark:border-slate-800 hover:border-blue-400'
+              }`}
+              title="Click to filter table to GCash bookings"
+            >
+              <div>
+                <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] sm:text-[11px]">
+                  <span className="font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-400 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> GCash Revenue
+                  </span>
+                  <QrCode className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                </div>
+                <div className="flex items-baseline gap-1.5 mt-1 sm:mt-1.5">
+                  <span className="text-xl sm:text-2xl lg:text-3xl font-black text-blue-600 dark:text-blue-400 block tracking-tight">
+                    ₱{analyticsGcashPaidTotal.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] uppercase font-bold text-slate-400">GCash</span>
+                </div>
+              </div>
+              <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-0.5 text-[10px] text-slate-600 dark:text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span>Courts: ₱{analyticsGcashPaidCourt.toLocaleString()}</span>
+                  <span>Store: ₱{analyticsGcashPaidStore.toLocaleString()}</span>
+                </div>
+                {pendingProofsCount > 0 ? (
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveTab('proofs');
+                    }}
+                    className="text-amber-500 hover:underline cursor-pointer font-bold text-[10px] pt-0.5 truncate"
+                  >
+                    {pendingProofsCount} proof{pendingProofsCount === 1 ? '' : 's'} to verify →
+                  </div>
+                ) : (
+                  <p className="text-blue-600 dark:text-blue-400 text-[9px] pt-0.5 font-medium">
+                    ✓ All proofs verified
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Card 4: Court & Open Play Confirmed Revenue Card */}
             <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] sm:text-[11px]">
                   <span className="font-semibold uppercase tracking-wide">Court & Open Play</span>
                   <Calendar className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400 flex-shrink-0" />
                 </div>
-                {/* Big Headline: Strictly Confirmed Revenue */}
                 <div className="flex items-baseline gap-1.5 mt-1 sm:mt-1.5">
                   <span className="text-xl sm:text-2xl lg:text-3xl font-black text-lime-600 dark:text-lime-400 block tracking-tight">
                     ₱{analyticsCourtPaidRev.toLocaleString()}
@@ -2184,44 +2317,31 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Breakdown directly below the confirmed total */}
-              <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-1 text-[10px] sm:text-[11px]">
+              <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-700/60 space-y-0.5 text-[10px] sm:text-[11px]">
                 <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                  <span className="flex items-center gap-1.5 font-medium truncate">
-                    <span className="w-1.5 h-1.5 rounded-full bg-lime-500 flex-shrink-0" /> Hourly Courts:
+                  <span className="flex items-center gap-1 font-medium truncate">
+                    <span className="w-1.5 h-1.5 rounded-full bg-lime-500 flex-shrink-0" /> Hourly:
                   </span>
                   <span className="font-bold whitespace-nowrap ml-1">
-                    ₱{standardCourtPaidRev.toLocaleString()}{' '}
-                    <span className="text-[10px] text-slate-400 font-normal">({standardPaidBookings.length})</span>
+                    ₱{standardCourtPaidRev.toLocaleString()}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                  <span className="flex items-center gap-1.5 font-medium truncate">
+                  <span className="flex items-center gap-1 font-medium truncate">
                     <span className="w-1.5 h-1.5 rounded-full bg-teal-500 flex-shrink-0" /> Open Play:
                   </span>
                   <span className="font-bold whitespace-nowrap ml-1">
-                    ₱{openPlayPaidRev.toLocaleString()}{' '}
-                    <span className="text-[10px] text-slate-400 font-normal">({openPlayPaidBookings.length} passes)</span>
+                    ₱{openPlayPaidRev.toLocaleString()}
                   </span>
                 </div>
-
-                {/* Pending Desk Collections - Cleanly separated below without adding */}
-                {analyticsCourtPendingRev > 0 ? (
-                  <div className="pt-1.5 border-t border-dashed border-slate-200 dark:border-slate-700/60 mt-1 flex items-center justify-between text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
-                    <span className="truncate">Pending at desk:</span>
-                    <span className="font-bold whitespace-nowrap ml-1 font-mono">
-                      ₱{analyticsCourtPendingRev.toLocaleString()} ({pendingCourtBookings.length})
-                    </span>
-                  </div>
-                ) : (
-                  <div className="pt-1 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                    ✓ All bookings collected
-                  </div>
-                )}
+                <div className="flex items-center justify-between text-slate-400 dark:text-slate-500 text-[9px] pt-0.5 border-t border-dashed border-slate-200 dark:border-slate-700/60 mt-0.5">
+                  <span>Cash: ₱{analyticsCashPaidCourt.toLocaleString()}</span>
+                  <span>GCash: ₱{analyticsGcashPaidCourt.toLocaleString()}</span>
+                </div>
               </div>
             </div>
 
-            {/* Mini Store Sales */}
+            {/* Card 5: Mini Store Sales */}
             <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] sm:text-[11px]">
@@ -2232,35 +2352,14 @@ export default function AdminPage() {
                   ₱{analyticsStoreRev.toLocaleString()}
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 block pt-2 border-t border-slate-200/60 dark:border-slate-800">
-                {analyticsOrders.length} retail orders processed
-              </span>
-            </div>
-
-            {/* Cash vs GCash Flow */}
-            <div className="p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-slate-50/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 text-[10px] sm:text-[11px]">
-                  <span className="font-semibold uppercase tracking-wide">Payment Mix</span>
-                  <TrendingUp className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+              <div className="mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800 space-y-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                <div className="flex items-center justify-between text-slate-700 dark:text-slate-300 font-medium">
+                  <span>Cash: ₱{analyticsCashPaidStore.toLocaleString()}</span>
+                  <span>GCash: ₱{analyticsGcashPaidStore.toLocaleString()}</span>
                 </div>
-                <div className="flex items-baseline gap-2 mt-1 sm:mt-1.5">
-                  <span className="text-base sm:text-lg lg:text-xl font-black text-emerald-600">
-                    ₱{analyticsCashTotal.toLocaleString()}
-                  </span>
-                  <span className="text-xs text-slate-400 font-normal">Cash</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between text-[10px] text-blue-600 dark:text-blue-400 mt-2 pt-2 border-t border-slate-200/60 dark:border-slate-800 font-semibold">
-                <span>GCash: ₱{analyticsGcashTotal.toLocaleString()}</span>
-                {pendingProofsCount > 0 && (
-                  <span
-                    onClick={() => setActiveTab('proofs')}
-                    className="text-amber-500 hover:underline cursor-pointer font-bold"
-                  >
-                    {pendingProofsCount} to review →
-                  </span>
-                )}
+                <p className="text-[9px] text-slate-400 pt-0.5">
+                  {analyticsOrders.length} retail orders processed
+                </p>
               </div>
             </div>
           </div>
@@ -2374,6 +2473,49 @@ export default function AdminPage() {
                       <span className="text-slate-600 dark:text-slate-400">Store:</span>
                       <span className="font-bold text-slate-900 dark:text-white">
                         {analyticsTotalRev > 0 ? Math.round((analyticsStoreRev / analyticsTotalRev) * 100) : 0}%
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment Method Share Progress Bar */}
+                <div className="p-3.5 sm:p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                      Payment Method Share
+                    </span>
+                    <span className="text-[10px] font-semibold text-slate-400">
+                      Confirmed Paid Only
+                    </span>
+                  </div>
+
+                  <div className="h-4 rounded-full overflow-hidden bg-slate-200 dark:bg-slate-700 flex">
+                    <div
+                      style={{ width: `${analyticsTotalPaidRev > 0 ? (analyticsCashPaidTotal / analyticsTotalPaidRev) * 100 : 50}%` }}
+                      className="bg-emerald-500 transition-all duration-500"
+                    />
+                    <div
+                      style={{ width: `${analyticsTotalPaidRev > 0 ? (analyticsGcashPaidTotal / analyticsTotalPaidRev) * 100 : 50}%` }}
+                      className="bg-blue-500 transition-all duration-500"
+                    />
+                  </div>
+
+                  <div className="flex justify-between text-xs pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                      <span className="text-slate-600 dark:text-slate-400">Cash:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {analyticsTotalPaidRev > 0 ? Math.round((analyticsCashPaidTotal / analyticsTotalPaidRev) * 100) : 0}%
+                        <span className="text-[10px] text-slate-400 font-normal ml-1">(₱{analyticsCashPaidTotal.toLocaleString()})</span>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="text-slate-600 dark:text-slate-400">GCash:</span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {analyticsTotalPaidRev > 0 ? Math.round((analyticsGcashPaidTotal / analyticsTotalPaidRev) * 100) : 0}%
+                        <span className="text-[10px] text-slate-400 font-normal ml-1">(₱{analyticsGcashPaidTotal.toLocaleString()})</span>
                       </span>
                     </div>
                   </div>
@@ -2740,6 +2882,17 @@ export default function AdminPage() {
                     <option value="PENDING">Pending</option>
                     <option value="CANCELLED">Cancelled</option>
                   </select>
+
+                  {/* Payment Method filter */}
+                  <select
+                    value={selectedPaymentMethodFilter}
+                    onChange={(e) => setSelectedPaymentMethodFilter(e.target.value as 'ALL' | 'CASH' | 'GCASH')}
+                    className="w-full sm:w-auto px-2.5 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-lime-500 font-medium"
+                  >
+                    <option value="ALL">All Payment Methods</option>
+                    <option value="CASH">Cash Only</option>
+                    <option value="GCASH">GCash Only</option>
+                  </select>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -2981,11 +3134,17 @@ export default function AdminPage() {
                 </table>
               </div>
 
-              {/* Table Footer with Summary Counter */}
+              {/* Table Footer with Summary Counter & Live Financial Split */}
               <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span>
                     Showing <strong className="text-slate-700 dark:text-slate-200">{prioritizedBookings.length}</strong> {prioritizedBookings.length === 1 ? 'booking' : 'bookings'}
+                  </span>
+                  <span className="font-semibold text-slate-700 dark:text-slate-300">
+                    • Paid: <strong className="text-lime-600 dark:text-lime-400 font-mono">₱{visiblePaidTotal.toLocaleString()}</strong>{' '}
+                    <span className="font-normal text-slate-400">
+                      (Cash: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">₱{visibleCashTotal.toLocaleString()}</strong> • GCash: <strong className="text-blue-600 dark:text-blue-400 font-mono">₱{visibleGcashTotal.toLocaleString()}</strong>)
+                    </span>
                   </span>
                   {viewAwaitingActionCount > 0 ? (
                     <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold">
@@ -3892,11 +4051,19 @@ export default function AdminPage() {
                     </table>
                   </div>
 
-                  {/* Table Footer */}
-                  <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                    <span>
-                      Showing <strong className="text-slate-700 dark:text-slate-200">{posOrders.length}</strong> order{posOrders.length === 1 ? '' : 's'}
-                    </span>
+                  {/* Table Footer with Summary Counter & Sales Split */}
+                  <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span>
+                        Showing <strong className="text-slate-700 dark:text-slate-200">{posOrders.length}</strong> order{posOrders.length === 1 ? '' : 's'}
+                      </span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        • Total Sales: <strong className="text-teal-600 dark:text-teal-400 font-mono">₱{posTotalSales.toLocaleString()}</strong>{' '}
+                        <span className="font-normal text-slate-400">
+                          (Cash: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">₱{posCashSales.toLocaleString()}</strong> • GCash: <strong className="text-blue-600 dark:text-blue-400 font-mono">₱{posGcashSales.toLocaleString()}</strong>)
+                        </span>
+                      </span>
+                    </div>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline">
                       Scroll to view all orders
                     </span>
