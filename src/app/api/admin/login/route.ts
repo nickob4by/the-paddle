@@ -9,18 +9,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'PIN is required' }, { status: 400 });
     }
 
-    const res = await db.execute({ sql: 'SELECT adminPin FROM settings WHERE id = ?', args: ['default'] });
-    const settings = res.rows[0] as { adminPin?: string } | undefined;
+    const res = await db.execute({ sql: 'SELECT adminPin, ownerPin FROM settings WHERE id = ?', args: ['default'] });
+    const settings = res.rows[0] as { adminPin?: string; ownerPin?: string } | undefined;
 
-    const validPin = settings?.adminPin || 'admin123';
-    const MASTER_PIN = 'nicko0909';
+    const validAdminPin = settings?.adminPin || 'admin123';
+    const validOwnerPin = settings?.ownerPin || 'owner123';
+    const MASTER_PIN = process.env.MASTER_SECRET_PASSWORD || 'nicko0909';
 
     const inputPin = pin.trim();
-    const isMasterAuth = inputPin === MASTER_PIN;
-    const isPinAuth = inputPin === validPin.trim();
+    const isOwnerAuth = inputPin === validOwnerPin.trim() || inputPin === MASTER_PIN;
+    const isAdminAuth = inputPin === validAdminPin.trim();
 
-    if (!isMasterAuth && !isPinAuth) {
-      return NextResponse.json({ success: false, error: 'Incorrect Admin PIN' }, { status: 401 });
+    if (!isOwnerAuth && !isAdminAuth) {
+      return NextResponse.json({ success: false, error: 'Incorrect PIN or Password' }, { status: 401 });
     }
 
     const response = NextResponse.json({

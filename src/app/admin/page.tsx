@@ -80,7 +80,10 @@ import {
   CalendarRange,
   Wrench,
   AlertTriangle,
-  Sparkles
+  Sparkles,
+  Lock,
+  KeyRound,
+  EyeOff
 } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
@@ -167,11 +170,19 @@ export default function AdminPage() {
   const [customCategoryMode, setCustomCategoryMode] = useState<boolean>(false);
   const [prodFormCustomCategory, setProdFormCustomCategory] = useState<string>('');
 
-  // POS Order Void Modal states
+  // POS Order Void Modal states (Protected by Owner Password)
   const [voidOrderModal, setVoidOrderModal] = useState<PosOrder | null>(null);
   const [voidPin, setVoidPin] = useState<string>('');
   const [voidError, setVoidError] = useState<string>('');
   const [voidLoading, setVoidLoading] = useState<boolean>(false);
+  const [showVoidPin, setShowVoidPin] = useState<boolean>(false);
+
+  // Void Booking Modal states (Protected by Owner Password)
+  const [voidBookingModal, setVoidBookingModal] = useState<Booking | null>(null);
+  const [voidBookingPin, setVoidBookingPin] = useState<string>('');
+  const [voidBookingError, setVoidBookingError] = useState<string>('');
+  const [voidBookingLoading, setVoidBookingLoading] = useState<boolean>(false);
+  const [showVoidBookingPin, setShowVoidBookingPin] = useState<boolean>(false);
   
   // POS Cart State
   const [cart, setCart] = useState<Array<{ product: Product; quantity: number }>>([]);
@@ -208,6 +219,11 @@ export default function AdminPage() {
   const [settingsClosureEndTime, setSettingsClosureEndTime] = useState('');
   const [settingsNoticeBannerEnabled, setSettingsNoticeBannerEnabled] = useState(false);
   const [settingsPin, setSettingsPin] = useState('');
+  const [settingsCurrentOwnerPin, setSettingsCurrentOwnerPin] = useState('');
+  const [settingsNewOwnerPin, setSettingsNewOwnerPin] = useState('');
+  const [settingsConfirmOwnerPin, setSettingsConfirmOwnerPin] = useState('');
+  const [settingsOwnerPinError, setSettingsOwnerPinError] = useState('');
+  const [showOwnerPinChange, setShowOwnerPinChange] = useState(false);
   const [settingsSavedMsg, setSettingsSavedMsg] = useState('');
   const [uploadingQr, setUploadingQr] = useState(false);
   const [qrImgError, setQrImgError] = useState(false);
@@ -953,7 +969,7 @@ export default function AdminPage() {
     }
   };
 
-  // Void POS Order with Admin PIN
+  // Void POS Order with Owner Password
   const handleVoidOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!voidOrderModal || !voidPin.trim()) return;
@@ -965,12 +981,12 @@ export default function AdminPage() {
       const res = await fetch(`/api/pos/orders/${voidOrderModal.id}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ adminPin: voidPin.trim() })
+        body: JSON.stringify({ ownerPin: voidPin.trim() })
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        setVoidError(data.error || 'Failed to void order. Invalid Admin PIN.');
+        setVoidError(data.error || 'Failed to void order. Invalid Owner Password.');
         return;
       }
 
@@ -979,6 +995,7 @@ export default function AdminPage() {
       setPosOrders((prev) => prev.filter((o) => o.id !== voidOrderModal.id));
       setVoidOrderModal(null);
       setVoidPin('');
+      setShowVoidPin(false);
 
       // 2. Re-fetch products to reflect the restored stock in the UI
       const productsRes = await fetch('/api/products?all=true');
@@ -1025,19 +1042,39 @@ export default function AdminPage() {
     }
   };
 
-  // Delete Booking
-  const deleteBooking = async (bookingId: string) => {
-    if (!confirm('Are you sure you want to permanently delete this booking?')) return;
+  // Void Booking with Owner Password
+  const handleVoidBooking = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!voidBookingModal || !voidBookingPin.trim()) return;
+
     try {
-      const res = await fetch(`/api/bookings/${bookingId}`, {
-        method: 'DELETE'
+      setVoidBookingLoading(true);
+      setVoidBookingError('');
+
+      const res = await fetch(`/api/bookings/${voidBookingModal.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ownerPin: voidBookingPin.trim() })
       });
+
       const data = await res.json();
-      if (data.success) {
-        setBookings((prev) => prev.filter((b) => b.id !== bookingId));
+      if (!res.ok || !data.success) {
+        setVoidBookingError(data.error || 'Failed to void booking. Invalid Owner Password.');
+        return;
       }
-    } catch (err) {
-      console.error(err);
+
+      // Booking successfully deleted from DB & slots released
+      setBookings((prev) => prev.filter((b) => b.id !== voidBookingModal.id));
+      setVoidBookingModal(null);
+      setVoidBookingPin('');
+      setShowVoidBookingPin(false);
+
+      // Re-fetch active bookings & slots in background
+      fetchData(false);
+    } catch (err: any) {
+      setVoidBookingError(err.message || 'Error occurred while voiding booking');
+    } finally {
+      setVoidBookingLoading(false);
     }
   };
 
@@ -1201,6 +1238,19 @@ export default function AdminPage() {
     setSettingsSavedMsg('');
 
     try {
+      if (settingsNewOwnerPin.trim()) {
+        if (!settingsCurrentOwnerPin.trim()) {
+          setSettingsOwnerPinError('Please enter your Current Owner Password to verify.');
+          return;
+        }
+        if (settingsNewOwnerPin.trim() !== settingsConfirmOwnerPin.trim()) {
+          setSettingsOwnerPinError('New Owner Passwords do not match.');
+          return;
+        }
+      }
+
+      setSettingsOwnerPinError('');
+
       const res = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1226,22 +1276,38 @@ export default function AdminPage() {
           openPlayCourtIds: settingsOpenPlayCourtIds,
           openPlayDays: JSON.stringify(settingsOpenPlayDays),
           scheduledPriceChanges: JSON.stringify(settingsScheduledPriceChanges),
-          ...(settingsPin.trim() ? { adminPin: settingsPin.trim() } : {})
+          ...(settingsPin.trim() ? { adminPin: settingsPin.trim() } : {}),
+          ...(settingsNewOwnerPin.trim()
+            ? {
+                ownerPin: settingsNewOwnerPin.trim(),
+                currentOwnerPin: settingsCurrentOwnerPin.trim()
+              }
+            : {})
         })
       });
       const data = await res.json();
+      if (!res.ok || !data.success) {
+        setSettingsOwnerPinError(data.error || 'Failed to update settings');
+        return;
+      }
+
       if (data.success) {
         setSettings(data.settings);
         if (data.settings.scheduledPriceChanges) {
           setSettingsScheduledPriceChanges(parseScheduledPriceChanges(data.settings.scheduledPriceChanges));
         }
         setSettingsPin('');
+        setSettingsCurrentOwnerPin('');
+        setSettingsNewOwnerPin('');
+        setSettingsConfirmOwnerPin('');
+        setSettingsOwnerPinError('');
+        setShowOwnerPinChange(false);
         setSettingsSavedMsg('Settings saved successfully!');
         setTimeout(() => setSettingsSavedMsg(''), 3000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to update settings');
+      setSettingsOwnerPinError(err.message || 'Failed to update settings');
     }
   };
 
@@ -2593,19 +2659,34 @@ export default function AdminPage() {
                                   </span>
                                 </td>
                                 <td className="py-2 px-3 text-right">
-                                  {p.paymentStatus !== 'PAID' ? (
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {p.paymentStatus !== 'PAID' ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => updateBookingStatus(p.id, { paymentStatus: 'PAID', bookingStatus: 'CONFIRMED' })}
+                                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-all cursor-pointer shadow-xs"
+                                      >
+                                        Mark Paid
+                                      </button>
+                                    ) : (
+                                      <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold flex items-center gap-1">
+                                        <Check className="w-3.5 h-3.5" /> Verified
+                                      </span>
+                                    )}
                                     <button
                                       type="button"
-                                      onClick={() => updateBookingStatus(p.id, { paymentStatus: 'PAID', bookingStatus: 'CONFIRMED' })}
-                                      className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold transition-all cursor-pointer shadow-xs"
+                                      onClick={() => {
+                                        setVoidBookingModal(p);
+                                        setVoidBookingPin('');
+                                        setVoidBookingError('');
+                                        setShowVoidBookingPin(false);
+                                      }}
+                                      className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer"
+                                      title="Void this pass (Requires Owner Password)"
                                     >
-                                      Mark Paid
+                                      <Trash2 className="w-3 h-3" />
                                     </button>
-                                  ) : (
-                                    <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold flex items-center justify-end gap-1">
-                                      <Check className="w-3.5 h-3.5" /> Verified
-                                    </span>
-                                  )}
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -2879,9 +2960,14 @@ export default function AdminPage() {
                               )}
 
                               <button
-                                onClick={() => deleteBooking(b.id)}
+                                onClick={() => {
+                                  setVoidBookingModal(b);
+                                  setVoidBookingPin('');
+                                  setVoidBookingError('');
+                                  setShowVoidBookingPin(false);
+                                }}
                                 className="p-1 rounded text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 hover:text-rose-700 dark:hover:text-rose-300 transition-colors cursor-pointer"
-                                title="Remove Booking"
+                                title="Void Booking (Requires Owner Password)"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -4754,18 +4840,119 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* Admin Security */}
-              <div className="pt-3 sm:pt-4 border-t border-slate-200 dark:border-slate-800">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Change Admin PIN <span className="text-slate-400 text-[10px]">(Leave blank to keep current PIN)</span>
-                </label>
-                <input
-                  type="password"
-                  placeholder="New Admin PIN"
-                  value={settingsPin}
-                  onChange={(e) => setSettingsPin(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500 tracking-wider"
-                />
+              {/* Credentials & Access Management */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-4">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5" />
+                  Access & Security Credentials
+                </h4>
+
+                {/* Staff PIN */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-bold text-slate-900 dark:text-white">
+                      Staff Admin PIN
+                    </label>
+                    <span className="text-[10px] text-slate-400">Desk & POS Everyday Login</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Used by your employees to log into the desk dashboard. Staff PIN cannot authorize voiding.
+                  </p>
+                  <input
+                    type="password"
+                    placeholder="New Staff PIN (Leave blank to keep current)"
+                    value={settingsPin}
+                    onChange={(e) => setSettingsPin(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs sm:text-sm focus:outline-none focus:border-lime-500 font-mono tracking-wider"
+                  />
+                </div>
+
+                {/* Owner Password */}
+                <div className="p-3.5 rounded-2xl bg-amber-500/[0.06] dark:bg-amber-500/[0.08] border border-amber-500/30 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-400 font-bold">
+                        <KeyRound className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h5 className="text-xs font-bold text-slate-950 dark:text-white">
+                          Owner Password (Void Authorization)
+                        </h5>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                          Required strictly to void bookings and POS orders. Keep secret from employees.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowOwnerPinChange(!showOwnerPinChange)}
+                      className="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer"
+                    >
+                      {showOwnerPinChange ? 'Hide' : 'Change Password'}
+                    </button>
+                  </div>
+
+                  {showOwnerPinChange && (
+                    <div className="space-y-2.5 pt-2 border-t border-amber-500/20 animate-in fade-in duration-200">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                          Current Owner Password <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="password"
+                          placeholder="Enter Current Owner Password"
+                          value={settingsCurrentOwnerPin}
+                          onChange={(e) => {
+                            setSettingsCurrentOwnerPin(e.target.value);
+                            setSettingsOwnerPinError('');
+                          }}
+                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-mono focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            New Owner Password <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="password"
+                            placeholder="New Owner Password"
+                            value={settingsNewOwnerPin}
+                            onChange={(e) => {
+                              setSettingsNewOwnerPin(e.target.value);
+                              setSettingsOwnerPinError('');
+                            }}
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-mono focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            Confirm New Password <span className="text-rose-500">*</span>
+                          </label>
+                          <input
+                            type="password"
+                            placeholder="Confirm New Password"
+                            value={settingsConfirmOwnerPin}
+                            onChange={(e) => {
+                              setSettingsConfirmOwnerPin(e.target.value);
+                              setSettingsOwnerPinError('');
+                            }}
+                            className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-xs font-mono focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </div>
+
+                      {settingsOwnerPinError && (
+                        <div className="p-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs font-medium flex items-center gap-1.5">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>{settingsOwnerPinError}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {settingsSavedMsg && (
@@ -5719,7 +5906,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {/* Void POS Order Modal (Admin PIN Protected) */}
+      {/* Void POS Order Modal (Owner Password Protected) */}
       {voidOrderModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-rose-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl animate-in zoom-in-95">
@@ -5732,7 +5919,7 @@ export default function AdminPage() {
                   <h3 className="text-base font-bold text-slate-950 dark:text-white">
                     Void POS Order #{voidOrderModal.orderNumber}
                   </h3>
-                  <p className="text-[11px] text-slate-500">Authorized Admin Action Required</p>
+                  <p className="text-[11px] text-slate-500">Owner Authorization Required (Staff PIN cannot void)</p>
                 </div>
               </div>
               <button
@@ -5741,6 +5928,7 @@ export default function AdminPage() {
                   setVoidOrderModal(null);
                   setVoidPin('');
                   setVoidError('');
+                  setShowVoidPin(false);
                 }}
                 className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
               >
@@ -5783,23 +5971,37 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* Admin PIN Confirmation Input */}
+              {/* Owner Password Confirmation Input */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Enter Admin PIN to Confirm Void
-                </label>
-                <input
-                  type="password"
-                  required
-                  autoFocus
-                  placeholder="Admin PIN"
-                  value={voidPin}
-                  onChange={(e) => {
-                    setVoidPin(e.target.value);
-                    setVoidError('');
-                  }}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm font-mono tracking-widest focus:outline-none focus:border-rose-500"
-                />
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Enter Owner Password to Confirm Void
+                  </label>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Owner only</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showVoidPin ? 'text' : 'password'}
+                    required
+                    autoFocus
+                    placeholder="Owner Password"
+                    value={voidPin}
+                    onChange={(e) => {
+                      setVoidPin(e.target.value);
+                      setVoidError('');
+                    }}
+                    className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm font-mono tracking-wider focus:outline-none focus:border-rose-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowVoidPin(!showVoidPin)}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    tabIndex={-1}
+                  >
+                    {showVoidPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400">Staff Admin PIN cannot authorize voiding.</p>
               </div>
 
               {voidError && (
@@ -5816,6 +6018,7 @@ export default function AdminPage() {
                     setVoidOrderModal(null);
                     setVoidPin('');
                     setVoidError('');
+                    setShowVoidPin(false);
                   }}
                   className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
                 >
@@ -5828,6 +6031,142 @@ export default function AdminPage() {
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>{voidLoading ? 'Voiding Order...' : 'Confirm Void Order'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Void Booking Modal (Owner Password Protected) */}
+      {voidBookingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-rose-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-500/15 text-rose-600 flex items-center justify-center">
+                  <Trash2 className="w-4 h-4 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-950 dark:text-white">
+                    Void Booking {voidBookingModal.bookingCode}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Owner Authorization Required (Staff PIN cannot void)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setVoidBookingModal(null);
+                  setVoidBookingPin('');
+                  setVoidBookingError('');
+                  setShowVoidBookingPin(false);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleVoidBooking} className="mt-4 space-y-4">
+              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-800 dark:text-rose-300 space-y-1">
+                <p className="font-bold flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                  This will permanently void & delete this booking:
+                </p>
+                <ul className="list-disc list-inside text-[11px] space-y-0.5 pl-1 text-slate-600 dark:text-slate-400">
+                  <li>
+                    Court slot <strong>{voidBookingModal.startTime} – {voidBookingModal.endTime}</strong> on <strong>{voidBookingModal.bookingDate}</strong> will be immediately released for other players.
+                  </li>
+                  <li>
+                    Deducts <strong>₱{voidBookingModal.totalAmount.toLocaleString()}</strong> from total court revenue and analytics.
+                  </li>
+                  <li>
+                    Player record for <strong>{voidBookingModal.clientName}</strong> will be permanently removed.
+                  </li>
+                </ul>
+              </div>
+
+              {/* Booking Summary details */}
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 space-y-1 text-xs">
+                <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                  <span>Player:</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{voidBookingModal.clientName} ({voidBookingModal.clientPhone})</span>
+                </div>
+                <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                  <span>Court / Type:</span>
+                  <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    {voidBookingModal.bookingType === 'OPEN_PLAY' ? 'Morning Open Play Pass' : voidBookingModal.courtName || voidBookingModal.courtId}
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                  <span>Amount & Method:</span>
+                  <span className="font-mono font-bold text-lime-600 dark:text-lime-400">
+                    ₱{voidBookingModal.totalAmount.toLocaleString()} ({voidBookingModal.paymentMethod})
+                  </span>
+                </div>
+              </div>
+
+              {/* Owner Password Input */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Enter Owner Password to Confirm Void
+                  </label>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Owner only</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showVoidBookingPin ? 'text' : 'password'}
+                    required
+                    autoFocus
+                    placeholder="Owner Password"
+                    value={voidBookingPin}
+                    onChange={(e) => {
+                      setVoidBookingPin(e.target.value);
+                      setVoidBookingError('');
+                    }}
+                    className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm font-mono tracking-wider focus:outline-none focus:border-rose-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowVoidBookingPin(!showVoidBookingPin)}
+                    className="absolute right-3 top-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    tabIndex={-1}
+                  >
+                    {showVoidBookingPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400">Staff Admin PIN cannot authorize voiding.</p>
+              </div>
+
+              {voidBookingError && (
+                <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-700 dark:text-rose-400 text-xs font-medium flex items-center gap-1.5">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{voidBookingError}</span>
+                </div>
+              )}
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setVoidBookingModal(null);
+                    setVoidBookingPin('');
+                    setVoidBookingError('');
+                    setShowVoidBookingPin(false);
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-300 text-xs font-bold transition-colors cursor-pointer border border-slate-200 dark:border-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={voidBookingLoading || !voidBookingPin.trim()}
+                  className="flex-1 py-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs shadow-lg shadow-rose-600/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{voidBookingLoading ? 'Voiding Booking...' : 'Confirm Void Booking'}</span>
                 </button>
               </div>
             </form>

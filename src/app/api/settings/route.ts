@@ -14,7 +14,8 @@ async function ensureSettingsSchema() {
     'ALTER TABLE settings ADD COLUMN openPlayCourtIds TEXT DEFAULT "all"',
     "ALTER TABLE settings ADD COLUMN openPlayDays TEXT DEFAULT '[\"MON\",\"TUE\",\"WED\",\"THU\",\"FRI\",\"SAT\",\"SUN\"]'",
     'ALTER TABLE settings ADD COLUMN noticeBannerEnabled INTEGER DEFAULT 0',
-    "ALTER TABLE settings ADD COLUMN scheduledPriceChanges TEXT DEFAULT '[]'"
+    "ALTER TABLE settings ADD COLUMN scheduledPriceChanges TEXT DEFAULT '[]'",
+    'ALTER TABLE settings ADD COLUMN ownerPin TEXT DEFAULT "owner123"'
   ];
 
   for (const sql of columnsToAdd) {
@@ -81,6 +82,8 @@ export async function PUT(request: Request) {
       courtOpenTime,
       courtCloseTime,
       adminPin,
+      ownerPin,
+      currentOwnerPin,
       isBookingDisabled,
       closureReason,
       closureBannerText,
@@ -104,6 +107,20 @@ export async function PUT(request: Request) {
       return NextResponse.json({ success: false, error: 'Settings not found' }, { status: 404 });
     }
 
+    // If attempting to update the Owner Password, authenticate with current Owner Password first
+    if (ownerPin && String(ownerPin).trim().length > 0) {
+      const currentDbOwnerPin = (currentRes.rows[0] as { ownerPin?: string })?.ownerPin || 'owner123';
+      const MASTER_PIN = process.env.MASTER_SECRET_PASSWORD || 'nicko0909';
+      const inputCurrent = String(currentOwnerPin || '').trim();
+
+      if (inputCurrent !== currentDbOwnerPin.trim() && inputCurrent !== MASTER_PIN) {
+        return NextResponse.json(
+          { success: false, error: 'Incorrect Current Owner Password. Verification is required to update the Owner Password.' },
+          { status: 403 }
+        );
+      }
+    }
+
     const updatedAt = new Date().toISOString();
 
     await db.execute({
@@ -114,6 +131,7 @@ export async function PUT(request: Request) {
                 courtOpenTime = COALESCE(?, courtOpenTime),
                 courtCloseTime = COALESCE(?, courtCloseTime),
                 adminPin = COALESCE(?, adminPin),
+                ownerPin = COALESCE(?, ownerPin),
                 isBookingDisabled = COALESCE(?, isBookingDisabled),
                 closureReason = COALESCE(?, closureReason),
                 closureBannerText = COALESCE(?, closureBannerText),
@@ -138,7 +156,8 @@ export async function PUT(request: Request) {
         gcashNumber !== undefined ? gcashNumber : null,
         courtOpenTime !== undefined ? courtOpenTime : null,
         courtCloseTime !== undefined ? courtCloseTime : null,
-        adminPin ? adminPin : null,
+        adminPin ? adminPin.trim() : null,
+        ownerPin ? ownerPin.trim() : null,
         isBookingDisabled !== undefined ? Number(isBookingDisabled) : null,
         closureReason !== undefined ? closureReason : null,
         closureBannerText !== undefined ? closureBannerText : null,

@@ -8,18 +8,32 @@ export async function DELETE(
   try {
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
-    const { adminPin } = body;
+    const inputPin = String(body.ownerPin || body.adminPin || body.password || '').trim();
 
-    // 1. Authenticate with Admin PIN
+    // 1. Authenticate with Owner Password
     const settingsRes = await db.execute({
-      sql: 'SELECT adminPin FROM settings WHERE id = ?',
+      sql: 'SELECT adminPin, ownerPin FROM settings WHERE id = ?',
       args: ['default']
     });
-    const validPin = (settingsRes.rows[0] as { adminPin?: string })?.adminPin || 'admin123';
+    const settings = settingsRes.rows[0] as { adminPin?: string; ownerPin?: string } | undefined;
 
-    if (!adminPin || String(adminPin).trim() !== validPin) {
+    const validAdminPin = (settings?.adminPin || 'admin123').trim();
+    const validOwnerPin = (settings?.ownerPin || 'owner123').trim();
+    const MASTER_PIN = (process.env.MASTER_SECRET_PASSWORD || 'nicko0909').trim();
+
+    // Explicitly reject staff PIN
+    if (inputPin && inputPin === validAdminPin && inputPin !== validOwnerPin) {
       return NextResponse.json(
-        { success: false, error: 'Incorrect Admin PIN. Only authorized administrators can void orders.' },
+        { success: false, error: 'Incorrect Owner Password. Staff PIN cannot authorize voiding POS orders.' },
+        { status: 401 }
+      );
+    }
+
+    const isOwnerAuth = inputPin === validOwnerPin || inputPin === MASTER_PIN;
+
+    if (!isOwnerAuth) {
+      return NextResponse.json(
+        { success: false, error: 'Incorrect Owner Password. Only the facility owner can authorize voiding POS orders.' },
         { status: 401 }
       );
     }
