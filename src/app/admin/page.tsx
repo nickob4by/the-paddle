@@ -78,6 +78,9 @@ import {
   ChevronRight,
   ArrowLeftRight,
   CalendarRange,
+  CalendarDays,
+  Printer,
+  Download,
   Wrench,
   AlertTriangle,
   Sparkles,
@@ -166,6 +169,16 @@ export default function AdminPage() {
   const [storeSubTab, setStoreSubTab] = useState<'pos' | 'inventory' | 'history'>('pos');
   const [posCategoryFilter, setPosCategoryFilter] = useState<string>('ALL');
   const [posSearchQuery, setPosSearchQuery] = useState('');
+
+  // POS History filtering, searching & pagination states
+  const [posHistoryTimeFilter, setPosHistoryTimeFilter] = useState<'TODAY' | 'YESTERDAY' | 'WEEK' | 'MONTH' | 'ALL' | 'CUSTOM'>('TODAY');
+  const [posHistoryStartDate, setPosHistoryStartDate] = useState<string>('');
+  const [posHistoryEndDate, setPosHistoryEndDate] = useState<string>('');
+  const [posHistorySearch, setPosHistorySearch] = useState<string>('');
+  const [posHistoryPaymentFilter, setPosHistoryPaymentFilter] = useState<'ALL' | 'CASH' | 'GCASH'>('ALL');
+  const [posOrderReceiptModal, setPosOrderReceiptModal] = useState<PosOrder | null>(null);
+  const [posServerHasMore, setPosServerHasMore] = useState<boolean>(false);
+  const [posHistoryLoading, setPosHistoryLoading] = useState<boolean>(false);
 
   // Inventory filter & search states
   const [inventoryCategoryFilter, setInventoryCategoryFilter] = useState<string>('ALL');
@@ -331,6 +344,8 @@ export default function AdminPage() {
     setTodayStr(localToday);
     setSelectedAnalyticsDate((prev) => prev || localToday);
     setSelectedAnalyticsDateEnd((prev) => prev || localToday);
+    setPosHistoryStartDate((prev) => prev || localToday);
+    setPosHistoryEndDate((prev) => prev || localToday);
     const saved = localStorage.getItem('paddle_admin_logged_in');
     if (saved === 'true') {
       setIsAuthenticated(true);
@@ -437,10 +452,11 @@ export default function AdminPage() {
       }
 
       // Fetch POS orders
-      const posRes = await fetch('/api/pos/orders');
+      const posRes = await fetch('/api/pos/orders?limit=500');
       const posData = await posRes.json();
       if (posData.success) {
         setPosOrders(posData.orders || []);
+        setPosServerHasMore(Boolean(posData.pagination?.hasMore));
       }
 
       setLastSynced(new Date().toLocaleTimeString());
@@ -1507,6 +1523,234 @@ export default function AdminPage() {
   const posGcashSales = useMemo(() => {
     return posOrders.filter((o) => o.paymentMethod === 'GCASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
   }, [posOrders]);
+
+  // Filtered orders for POS History tab
+  const posFilteredOrders = useMemo(() => {
+    return posOrders.filter((o) => {
+      // 1. Payment filter
+      if (posHistoryPaymentFilter !== 'ALL' && (o.paymentMethod || 'CASH') !== posHistoryPaymentFilter) {
+        return false;
+      }
+
+      // 2. Date filter
+      if (o.createdAt) {
+        const orderDate = getLocalDateStr(new Date(o.createdAt));
+        if (posHistoryTimeFilter === 'TODAY') {
+          if (todayStr && orderDate !== todayStr) return false;
+        } else if (posHistoryTimeFilter === 'YESTERDAY') {
+          const yest = new Date();
+          yest.setDate(yest.getDate() - 1);
+          const yestStr = getLocalDateStr(yest);
+          if (orderDate !== yestStr) return false;
+        } else if (posHistoryTimeFilter === 'WEEK') {
+          const d7 = new Date();
+          d7.setDate(d7.getDate() - 6);
+          const d7Str = getLocalDateStr(d7);
+          if (orderDate < d7Str || orderDate > (todayStr || '9999-99-99')) return false;
+        } else if (posHistoryTimeFilter === 'MONTH') {
+          const m1 = new Date();
+          m1.setDate(1);
+          const m1Str = getLocalDateStr(m1);
+          if (orderDate < m1Str || orderDate > (todayStr || '9999-99-99')) return false;
+        } else if (posHistoryTimeFilter === 'CUSTOM') {
+          if (posHistoryStartDate && orderDate < posHistoryStartDate) return false;
+          if (posHistoryEndDate && orderDate > posHistoryEndDate) return false;
+        }
+      }
+
+      // 3. Search query
+      if (posHistorySearch.trim()) {
+        const q = posHistorySearch.toLowerCase().trim();
+        const matchesOrderNum = (o.orderNumber || '').toLowerCase().includes(q);
+        const matchesGcash = (o.gcashReference || '').toLowerCase().includes(q);
+        const matchesNotes = (o.notes || '').toLowerCase().includes(q);
+        const matchesBooking = (o.bookingId || '').toLowerCase().includes(q);
+        const matchesItems = (o.items || []).some((it) => (it.productName || '').toLowerCase().includes(q));
+
+        if (!matchesOrderNum && !matchesGcash && !matchesNotes && !matchesBooking && !matchesItems) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [posOrders, posHistoryPaymentFilter, posHistoryTimeFilter, posHistoryStartDate, posHistoryEndDate, posHistorySearch, todayStr]);
+
+  const posFilteredTotalSales = useMemo(() => {
+    return posFilteredOrders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  }, [posFilteredOrders]);
+
+  const posFilteredCashSales = useMemo(() => {
+    return posFilteredOrders.filter((o) => (o.paymentMethod || 'CASH') === 'CASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  }, [posFilteredOrders]);
+
+  const posFilteredGcashSales = useMemo(() => {
+    return posFilteredOrders.filter((o) => o.paymentMethod === 'GCASH').reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+  }, [posFilteredOrders]);
+
+  const posFilteredTotalItems = useMemo(() => {
+    return posFilteredOrders.reduce((sum, o) => {
+      const itemsCount = (o.items || []).reduce((iSum, it) => iSum + Number(it.quantity || 0), 0);
+      return sum + itemsCount;
+    }, 0);
+  }, [posFilteredOrders]);
+
+  const handlePrintPosReceipt = (order: PosOrder) => {
+    const printWindow = window.open('', '_blank', 'width=420,height=600');
+    if (!printWindow) {
+      alert('Please allow popups to print receipts.');
+      return;
+    }
+    const itemsHtml = (order.items || [])
+      .map(
+        (it) => `
+      <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px;">
+        <span>${it.quantity}x ${it.productName}</span>
+        <span style="font-family: monospace;">₱${(it.unitPrice * it.quantity).toLocaleString()}</span>
+      </div>
+    `
+      )
+      .join('');
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Receipt - ${order.orderNumber}</title>
+          <style>
+            body { font-family: monospace, -apple-system, sans-serif; padding: 24px; color: #111; max-width: 320px; margin: 0 auto; }
+            .header { text-align: center; border-bottom: 1px dashed #ccc; padding-bottom: 12px; margin-bottom: 12px; }
+            .title { font-size: 18px; font-weight: bold; margin-bottom: 4px; }
+            .subtitle { font-size: 11px; color: #666; }
+            .details { font-size: 12px; margin-bottom: 12px; border-bottom: 1px dashed #ccc; padding-bottom: 12px; line-height: 1.6; }
+            .items { border-bottom: 1px dashed #ccc; padding-bottom: 12px; margin-bottom: 12px; }
+            .total { font-size: 16px; font-weight: bold; display: flex; justify-content: space-between; margin-bottom: 6px; }
+            .footer { text-align: center; font-size: 11px; color: #888; margin-top: 24px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="title">THE PADDLE</div>
+            <div class="subtitle">Club POS Receipt</div>
+          </div>
+          <div class="details">
+            <div><strong>Order:</strong> ${order.orderNumber}</div>
+            <div><strong>Date:</strong> ${new Date(order.createdAt).toLocaleString('en-US')}</div>
+            <div><strong>Payment:</strong> ${order.paymentMethod}</div>
+            ${order.gcashReference ? `<div><strong>GCash Ref:</strong> ${order.gcashReference}</div>` : ''}
+            ${order.bookingId ? `<div><strong>Court Ref:</strong> ${order.bookingId}</div>` : ''}
+            ${order.notes ? `<div><strong>Notes:</strong> ${order.notes}</div>` : ''}
+          </div>
+          <div class="items">
+            ${itemsHtml}
+          </div>
+          <div class="total">
+            <span>TOTAL:</span>
+            <span>₱${Number(order.totalAmount).toLocaleString()}</span>
+          </div>
+          ${
+            order.paymentMethod === 'CASH' && order.cashTendered !== undefined && order.cashTendered !== null
+              ? `
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #555;">
+              <span>Cash Tendered:</span>
+              <span>₱${Number(order.cashTendered).toLocaleString()}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #555;">
+              <span>Change:</span>
+              <span>₱${Number(order.changeGiven || 0).toLocaleString()}</span>
+            </div>
+          `
+              : ''
+          }
+          <div class="footer">
+            <p>Thank you for playing at The Paddle!</p>
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handleExportPosCsv = () => {
+    if (posFilteredOrders.length === 0) {
+      alert('No orders to export for the selected filter.');
+      return;
+    }
+
+    const headers = [
+      'Order Number',
+      'Date',
+      'Time',
+      'Payment Method',
+      'Total Amount (PHP)',
+      'Cash Tendered',
+      'Change Given',
+      'GCash Reference',
+      'Booking ID',
+      'Notes',
+      'Items Purchased'
+    ];
+
+    const rows = posFilteredOrders.map((o) => {
+      const d = new Date(o.createdAt);
+      const datePart = d.toLocaleDateString('en-US');
+      const timePart = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const itemsStr = (o.items || [])
+        .map((it) => `${it.quantity}x ${it.productName} (₱${it.unitPrice})`)
+        .join('; ');
+
+      return [
+        `"${o.orderNumber}"`,
+        `"${datePart}"`,
+        `"${timePart}"`,
+        `"${o.paymentMethod}"`,
+        o.totalAmount,
+        o.cashTendered !== null && o.cashTendered !== undefined ? o.cashTendered : '',
+        o.changeGiven !== null && o.changeGiven !== undefined ? o.changeGiven : '',
+        `"${(o.gcashReference || '').replace(/"/g, '""')}"`,
+        `"${(o.bookingId || '').replace(/"/g, '""')}"`,
+        `"${(o.notes || '').replace(/"/g, '""')}"`,
+        `"${itemsStr.replace(/"/g, '""')}"`
+      ].join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `the-paddle-pos-orders-${todayStr || 'export'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleLoadMorePosOrders = async () => {
+    try {
+      setPosHistoryLoading(true);
+      const offset = posOrders.length;
+      const res = await fetch(`/api/pos/orders?limit=200&offset=${offset}`);
+      const data = await res.json();
+      if (data.success && data.orders) {
+        setPosOrders((prev) => {
+          const existingIds = new Set(prev.map((o) => o.id));
+          const newOrders = data.orders.filter((o: PosOrder) => !existingIds.has(o.id));
+          return [...prev, ...newOrders];
+        });
+        setPosServerHasMore(Boolean(data.pagination?.hasMore));
+      }
+    } catch (err) {
+      console.error('Error loading more POS orders:', err);
+    } finally {
+      setPosHistoryLoading(false);
+    }
+  };
 
   // Calculate statistics
   const todayBookingsCount = todayStr ? bookings.filter((b) => b.bookingStatus !== 'CANCELLED' && b.bookingDate === todayStr).length : 0;
@@ -3472,7 +3716,7 @@ export default function AdminPage() {
                   }`}
                 >
                   <Receipt className="w-3.5 h-3.5" />
-                  <span>Order History ({posOrders.length})</span>
+                  <span>Order History ({posFilteredOrders.length}{posOrders.length !== posFilteredOrders.length ? ` / ${posOrders.length}` : ''})</span>
                 </button>
               </div>
             </div>
@@ -3970,6 +4214,182 @@ export default function AdminPage() {
             {/* SUB-VIEW 3: SALES / ORDERS HISTORY */}
             {storeSubTab === 'history' && (
               <div className="space-y-4">
+                {/* TOOLBAR: Date Presets, Custom Date, Search, Payment Filter & CSV Export */}
+                <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm space-y-3">
+                  <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                    {/* Left: Quick Date Presets */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 scrollbar-none flex-wrap">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1">
+                        <CalendarDays className="w-3.5 h-3.5 text-lime-600 dark:text-lime-400" />
+                        Time:
+                      </span>
+                      {[
+                        { id: 'TODAY', label: 'Today' },
+                        { id: 'YESTERDAY', label: 'Yesterday' },
+                        { id: 'WEEK', label: 'Last 7 Days' },
+                        { id: 'MONTH', label: 'This Month' },
+                        { id: 'CUSTOM', label: 'Custom Range' },
+                        { id: 'ALL', label: 'All Loaded' }
+                      ].map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setPosHistoryTimeFilter(preset.id as any)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                            posHistoryTimeFilter === preset.id
+                              ? 'bg-lime-500 text-slate-950 shadow-sm'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Right: Payment Method Filter Chips & Export Button */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
+                        {[
+                          { id: 'ALL', label: 'All Payments' },
+                          { id: 'CASH', label: 'Cash' },
+                          { id: 'GCASH', label: 'GCash' }
+                        ].map((m) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => setPosHistoryPaymentFilter(m.id as any)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              posHistoryPaymentFilter === m.id
+                                ? 'bg-white dark:bg-slate-900 text-lime-600 dark:text-lime-400 shadow-sm'
+                                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                            }`}
+                          >
+                            {m.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleExportPosCsv}
+                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
+                        title="Export filtered orders to CSV for bookkeeping"
+                      >
+                        <Download className="w-3.5 h-3.5 text-slate-500" />
+                        <span className="hidden sm:inline">Export</span> CSV
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Second Row: Custom Date Pickers (if CUSTOM) & Search Input */}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                    {/* Live Search Input */}
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search order #, GCash ref, product name..."
+                        value={posHistorySearch}
+                        onChange={(e) => setPosHistorySearch(e.target.value)}
+                        className="w-full pl-9 pr-8 py-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-lime-500"
+                      />
+                      {posHistorySearch && (
+                        <button
+                          type="button"
+                          onClick={() => setPosHistorySearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Custom Date Pickers */}
+                    {posHistoryTimeFilter === 'CUSTOM' && (
+                      <div className="flex items-center gap-2 flex-wrap text-xs">
+                        <span className="text-slate-500 font-semibold text-[11px]">From:</span>
+                        <input
+                          type="date"
+                          value={posHistoryStartDate}
+                          onChange={(e) => setPosHistoryStartDate(e.target.value)}
+                          className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-lime-500"
+                        />
+                        <span className="text-slate-500 font-semibold text-[11px]">To:</span>
+                        <input
+                          type="date"
+                          value={posHistoryEndDate}
+                          onChange={(e) => setPosHistoryEndDate(e.target.value)}
+                          className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:border-lime-500"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* RECONCILIATION SUMMARY KPI CARDS */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Total Period Sales
+                    </span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg sm:text-xl font-black font-mono text-lime-600 dark:text-lime-400">
+                        ₱{posFilteredTotalSales.toLocaleString()}
+                      </span>
+                      <DollarSign className="w-4 h-4 text-lime-500/50" />
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      {posFilteredOrders.length} order{posFilteredOrders.length === 1 ? '' : 's'} recorded
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Cash In Drawer
+                    </span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg sm:text-xl font-black font-mono text-emerald-600 dark:text-emerald-400">
+                        ₱{posFilteredCashSales.toLocaleString()}
+                      </span>
+                      <Banknote className="w-4 h-4 text-emerald-500/50" />
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      Physical cash tendered
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      GCash Received
+                    </span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg sm:text-xl font-black font-mono text-blue-600 dark:text-blue-400">
+                        ₱{posFilteredGcashSales.toLocaleString()}
+                      </span>
+                      <Wallet className="w-4 h-4 text-blue-500/50" />
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      E-wallet merchant transfer
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Total Items Sold
+                    </span>
+                    <div className="mt-1 flex items-baseline justify-between">
+                      <span className="text-lg sm:text-xl font-black font-mono text-slate-900 dark:text-white">
+                        {posFilteredTotalItems} <span className="text-xs font-normal text-slate-400">pcs</span>
+                      </span>
+                      <Package className="w-4 h-4 text-slate-400/50" />
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      Drinks, balls & rentals
+                    </span>
+                  </div>
+                </div>
+
+                {/* ORDERS TABLE */}
                 <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm flex flex-col">
                   <div className="overflow-x-auto overflow-y-auto max-h-[440px] sm:max-h-[520px] custom-scrollbar">
                     <table className="w-full text-left border-collapse text-xs min-w-[700px]">
@@ -3985,17 +4405,25 @@ export default function AdminPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-700 dark:text-slate-300">
-                        {posOrders.length === 0 ? (
+                        {posFilteredOrders.length === 0 ? (
                           <tr>
                             <td colSpan={7} className="py-12 text-center text-slate-400">
-                              No store POS orders recorded yet.
+                              {posHistorySearch || posHistoryTimeFilter !== 'ALL' || posHistoryPaymentFilter !== 'ALL'
+                                ? 'No store POS orders matching your active filters.'
+                                : 'No store POS orders recorded yet.'}
                             </td>
                           </tr>
                         ) : (
-                          posOrders.map((order) => (
-                            <tr key={order.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                          posFilteredOrders.map((order) => (
+                            <tr
+                              key={order.id}
+                              className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                              onClick={() => setPosOrderReceiptModal(order)}
+                            >
                               <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                                {order.orderNumber}
+                                <span className="group-hover:text-lime-600 dark:group-hover:text-lime-400 underline-offset-2 group-hover:underline">
+                                  {order.orderNumber}
+                                </span>
                               </td>
                               <td className="py-3 px-4 text-slate-500 whitespace-nowrap">
                                 {new Date(order.createdAt).toLocaleString('en-US', {
@@ -4014,8 +4442,8 @@ export default function AdminPage() {
                                   ))}
                                 </div>
                               </td>
-                              <td className="py-3 px-4 font-black text-lime-600 dark:text-lime-400 whitespace-nowrap">
-                                ₱{order.totalAmount.toLocaleString()}
+                              <td className="py-3 px-4 font-black text-lime-600 dark:text-lime-400 whitespace-nowrap font-mono">
+                                ₱{Number(order.totalAmount).toLocaleString()}
                               </td>
                               <td className="py-3 px-4 whitespace-nowrap">
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
@@ -4029,20 +4457,31 @@ export default function AdminPage() {
                               <td className="py-3 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
                                 {order.gcashReference || order.bookingId || '—'}
                               </td>
-                              <td className="py-3 px-4 text-right whitespace-nowrap">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setVoidOrderModal(order);
-                                    setVoidPin('');
-                                    setVoidError('');
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 font-bold text-[11px] transition-colors cursor-pointer inline-flex items-center gap-1 shadow-xs"
-                                  title="Void this order (deduct sales & return items to stock)"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                  <span>Void</span>
-                                </button>
+                              <td className="py-3 px-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPosOrderReceiptModal(order)}
+                                    className="px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-[11px] transition-colors cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                                    title="View full receipt details and print"
+                                  >
+                                    <Receipt className="w-3 h-3 text-slate-500" />
+                                    <span>Receipt</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setVoidOrderModal(order);
+                                      setVoidPin('');
+                                      setVoidError('');
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 border border-rose-500/20 font-bold text-[11px] transition-colors cursor-pointer inline-flex items-center gap-1 shadow-xs"
+                                    title="Void this order (deduct sales & return items to stock)"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>Void</span>
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))
@@ -4051,21 +4490,36 @@ export default function AdminPage() {
                     </table>
                   </div>
 
+                  {/* Load Older Orders from Server if available */}
+                  {posServerHasMore && (
+                    <div className="p-3 bg-slate-50/50 dark:bg-slate-800/40 border-t border-slate-200 dark:border-slate-800 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={handleLoadMorePosOrders}
+                        disabled={posHistoryLoading}
+                        className="px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-lime-500 text-xs font-bold text-slate-700 dark:text-slate-200 hover:text-lime-600 dark:hover:text-lime-400 transition-all cursor-pointer inline-flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${posHistoryLoading ? 'animate-spin' : ''}`} />
+                        <span>{posHistoryLoading ? 'Loading Older Orders...' : 'Load Older Orders from Database'}</span>
+                      </button>
+                    </div>
+                  )}
+
                   {/* Table Footer with Summary Counter & Sales Split */}
                   <div className="px-4 py-2.5 bg-slate-50/80 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span>
-                        Showing <strong className="text-slate-700 dark:text-slate-200">{posOrders.length}</strong> order{posOrders.length === 1 ? '' : 's'}
+                        Showing <strong className="text-slate-700 dark:text-slate-200">{posFilteredOrders.length}</strong> of <strong className="text-slate-700 dark:text-slate-200">{posOrders.length}</strong> orders
                       </span>
                       <span className="font-semibold text-slate-700 dark:text-slate-300">
-                        • Total Sales: <strong className="text-teal-600 dark:text-teal-400 font-mono">₱{posTotalSales.toLocaleString()}</strong>{' '}
+                        • Filtered Sales: <strong className="text-teal-600 dark:text-teal-400 font-mono">₱{posFilteredTotalSales.toLocaleString()}</strong>{' '}
                         <span className="font-normal text-slate-400">
-                          (Cash: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">₱{posCashSales.toLocaleString()}</strong> • GCash: <strong className="text-blue-600 dark:text-blue-400 font-mono">₱{posGcashSales.toLocaleString()}</strong>)
+                          (Cash: <strong className="text-emerald-600 dark:text-emerald-400 font-mono">₱{posFilteredCashSales.toLocaleString()}</strong> • GCash: <strong className="text-blue-600 dark:text-blue-400 font-mono">₱{posFilteredGcashSales.toLocaleString()}</strong>)
                         </span>
                       </span>
                     </div>
                     <span className="text-[10px] text-slate-400 dark:text-slate-500 hidden sm:inline">
-                      Scroll to view all orders
+                      Click any row to view & print receipt
                     </span>
                   </div>
                 </div>
@@ -6069,6 +6523,145 @@ export default function AdminPage() {
             >
               Done & Next Order
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* POS Order Receipt & Itemized Details Modal */}
+      {posOrderReceiptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl animate-in zoom-in-95">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-lime-500/15 text-lime-600 dark:text-lime-400 flex items-center justify-center">
+                  <Receipt className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-950 dark:text-white">
+                    Order #{posOrderReceiptModal.orderNumber}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {new Date(posOrderReceiptModal.createdAt).toLocaleString('en-US', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short'
+                    })}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPosOrderReceiptModal(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Receipt Body */}
+            <div className="py-4 space-y-3.5 max-h-[60vh] overflow-y-auto custom-scrollbar">
+              {/* Items List Table */}
+              <div className="rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 p-3.5 space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Purchased Items ({posOrderReceiptModal.items?.length || 0})
+                </span>
+                <div className="divide-y divide-slate-200/60 dark:divide-slate-700/60">
+                  {(posOrderReceiptModal.items || []).map((it, idx) => (
+                    <div key={idx} className="py-2 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-slate-900 dark:text-white">{it.quantity}x</span>{' '}
+                        <span className="text-slate-700 dark:text-slate-300">{it.productName}</span>
+                        <div className="text-[10px] text-slate-400 font-mono">₱{Number(it.unitPrice).toLocaleString()} each</div>
+                      </div>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">
+                        ₱{(Number(it.unitPrice) * Number(it.quantity)).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Financial Totals */}
+              <div className="p-3.5 rounded-2xl bg-lime-500/5 dark:bg-lime-500/10 border border-lime-500/20 space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600 dark:text-slate-400 font-medium">Payment Method:</span>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                    posOrderReceiptModal.paymentMethod === 'GCASH'
+                      ? 'bg-blue-500/15 text-blue-600 border border-blue-500/30'
+                      : 'bg-emerald-500/15 text-emerald-600 border border-emerald-500/30'
+                  }`}>
+                    {posOrderReceiptModal.paymentMethod}
+                  </span>
+                </div>
+
+                {posOrderReceiptModal.paymentMethod === 'CASH' && posOrderReceiptModal.cashTendered !== undefined && posOrderReceiptModal.cashTendered !== null && (
+                  <>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600 dark:text-slate-400">Cash Tendered:</span>
+                      <span className="font-mono font-bold text-slate-900 dark:text-white">
+                        ₱{Number(posOrderReceiptModal.cashTendered).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600 dark:text-slate-400">Change Given:</span>
+                      <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                        ₱{Number(posOrderReceiptModal.changeGiven || 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </>
+                )}
+
+                {posOrderReceiptModal.paymentMethod === 'GCASH' && posOrderReceiptModal.gcashReference && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600 dark:text-slate-400">GCash Reference:</span>
+                    <span className="font-mono font-bold text-blue-600 dark:text-blue-400">
+                      {posOrderReceiptModal.gcashReference}
+                    </span>
+                  </div>
+                )}
+
+                {posOrderReceiptModal.bookingId && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-600 dark:text-slate-400">Court Booking:</span>
+                    <span className="font-mono text-slate-700 dark:text-slate-300">
+                      {posOrderReceiptModal.bookingId}
+                    </span>
+                  </div>
+                )}
+
+                {posOrderReceiptModal.notes && (
+                  <div className="pt-1 text-[11px] text-slate-500 italic">
+                    Note: {posOrderReceiptModal.notes}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-lime-500/20 flex justify-between items-center">
+                  <span className="font-bold text-slate-900 dark:text-white">Total Amount:</span>
+                  <span className="text-base font-black font-mono text-lime-600 dark:text-lime-400">
+                    ₱{Number(posOrderReceiptModal.totalAmount).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => handlePrintPosReceipt(posOrderReceiptModal)}
+                className="flex-1 py-2.5 rounded-xl bg-lime-500 hover:bg-lime-400 text-slate-950 font-bold text-xs cursor-pointer inline-flex items-center justify-center gap-1.5 shadow-sm shadow-lime-500/20"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print Receipt</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPosOrderReceiptModal(null)}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}
