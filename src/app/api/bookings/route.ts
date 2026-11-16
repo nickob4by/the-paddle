@@ -100,8 +100,8 @@ export async function POST(request: Request) {
     const {
       courtId,
       clientName,
-      clientEmail,
-      clientPhone,
+      clientEmail = '',
+      clientPhone = '',
       bookingDate,
       startTime,
       endTime,
@@ -109,21 +109,26 @@ export async function POST(request: Request) {
       gcashReference = '',
       receiptUrl = '',
       notes = '',
-      bookingType = 'STANDARD'
+      bookingType = 'STANDARD',
+      isAdmin = false,
+      overrideTotalAmount,
+      paymentStatus: requestedPaymentStatus,
+      bookingStatus: requestedBookingStatus
     } = body;
 
     const isPass = bookingType === 'OPEN_PLAY';
+    const effectivePhone = (clientPhone || (isAdmin ? '09000000000' : '')).trim();
 
     // Validation
-    if (!courtId || !clientName || !clientPhone || !bookingDate || !startTime || !endTime || !paymentMethod) {
+    if (!courtId || !clientName || (!effectivePhone && !isAdmin) || !bookingDate || !startTime || !endTime || !paymentMethod) {
       return NextResponse.json(
         { success: false, error: 'Please fill in all required booking information.' },
         { status: 400 }
       );
     }
 
-    // Require receipt upload for GCash bookings
-    if (paymentMethod === 'GCASH' && (!receiptUrl || typeof receiptUrl !== 'string' || !receiptUrl.trim())) {
+    // Require receipt upload for GCash bookings (clients only, waived for admin manual entry)
+    if (!isAdmin && paymentMethod === 'GCASH' && (!receiptUrl || typeof receiptUrl !== 'string' || !receiptUrl.trim())) {
       return NextResponse.json(
         { success: false, error: 'Please upload your GCash payment screenshot receipt to complete your booking.' },
         { status: 400 }
@@ -139,7 +144,7 @@ export async function POST(request: Request) {
     const phTodayStr = `${phYear}-${phMonth}-${phDay}`;
     const phHour = phTime.getHours();
 
-    if (bookingDate < phTodayStr) {
+    if (!isAdmin && bookingDate < phTodayStr) {
       return NextResponse.json(
         { success: false, error: 'Cannot book for past dates.' },
         { status: 400 }
@@ -153,7 +158,7 @@ export async function POST(request: Request) {
     }
     const court = courtRes.rows[0] as unknown as Court;
 
-    if (court.isActive === 0) {
+    if (!isAdmin && court.isActive === 0) {
       return NextResponse.json(
         { success: false, error: `${court.name} is currently undergoing maintenance and is not accepting bookings.` },
         { status: 400 }
@@ -171,7 +176,7 @@ export async function POST(request: Request) {
 
     const settings: SystemSettings = (settingsRes.rows[0] || {}) as any;
 
-    if (bookingDate === phTodayStr) {
+    if (!isAdmin && bookingDate === phTodayStr) {
       if (isPass) {
         // Morning Open Play pass: can be booked while session is active up to openPlayEndTime (default 11:00 AM sharp)
         const endParts = (settings.openPlayEndTime || '11:00').split(':');
@@ -209,7 +214,7 @@ export async function POST(request: Request) {
       (settings.closureStartDate && !settings.closureEndDate && bookingDate === settings.closureStartDate)
     );
 
-    if (isGloballyDisabled || isDateClosed) {
+    if (!isAdmin && (isGloballyDisabled || isDateClosed)) {
       const hasTimeWindow = Boolean(settings.closureStartTime && settings.closureEndTime && settings.closureStartTime !== settings.closureEndTime);
       let overlapsClosure = true;
       if (hasTimeWindow) {
@@ -230,14 +235,14 @@ export async function POST(request: Request) {
       // ----------------------------------------------------
       // OPEN PLAY BOOKING LOGIC
       // ----------------------------------------------------
-      if (!isOpenPlayActiveOnDate(bookingDate, settings)) {
+      if (!isAdmin && !isOpenPlayActiveOnDate(bookingDate, settings)) {
         return NextResponse.json(
           { success: false, error: 'Morning Open Play is not active on the selected date.' },
           { status: 400 }
         );
       }
 
-      if (!isCourtParticipatingInOpenPlay(courtId, settings)) {
+      if (!isAdmin && !isCourtParticipatingInOpenPlay(courtId, settings)) {
         return NextResponse.json(
           { success: false, error: 'Selected court does not participate in Morning Open Play.' },
           { status: 400 }
@@ -257,7 +262,7 @@ export async function POST(request: Request) {
       });
       const currentHeadcount = Number(countRes.rows[0]?.count || 0);
 
-      if (currentHeadcount >= capacity) {
+      if (!isAdmin && currentHeadcount >= capacity) {
         return NextResponse.json(
           {
             success: false,
@@ -267,7 +272,8 @@ export async function POST(request: Request) {
         );
       }
 
-      finalTotalAmount = openPlayPrice;
+      const hasCustomPrice = isAdmin && overrideTotalAmount !== undefined && overrideTotalAmount !== null && overrideTotalAmount !== '' && !isNaN(Number(overrideTotalAmount));
+      finalTotalAmount = hasCustomPrice ? Math.max(0, Number(overrideTotalAmount)) : openPlayPrice;
       const startH = parseInt(finalStartTime.split(':')[0], 10);
       const endH = parseInt(finalEndTime.split(':')[0], 10);
       finalDurationHours = endH > startH ? endH - startH : 6;
@@ -297,7 +303,7 @@ export async function POST(request: Request) {
       }
 
       // Check if standard booking collides with Morning Open Play hours on participating court
-      if (isOpenPlayDay && isCourtOpenPlay) {
+      if (!isAdmin && isOpenPlayDay && isCourtOpenPlay) {
         const collidesWithOpenPlay = slotHours.some((slot) => isHourInOpenPlayWindow(slot, settings));
         if (collidesWithOpenPlay) {
           const openStart = settings.openPlayStartTime || '05:00';
@@ -318,13 +324,16 @@ export async function POST(request: Request) {
         calcAmount += getEffectiveSlotRate(court, slotStr, bookingDate, settings);
       }
       finalDurationHours = Math.max(slotHours.length, 1);
-      finalTotalAmount = calcAmount > 0 ? calcAmount : finalDurationHours * getEffectiveCourtHourlyRate(bookingDate, court, settings);
+      const autoPrice = calcAmount > 0 ? calcAmount : finalDurationHours * getEffectiveCourtHourlyRate(bookingDate, court, settings);
+
+      const hasCustomPrice = isAdmin && overrideTotalAmount !== undefined && overrideTotalAmount !== null && overrideTotalAmount !== '' && !isNaN(Number(overrideTotalAmount));
+      finalTotalAmount = hasCustomPrice ? Math.max(0, Number(overrideTotalAmount)) : autoPrice;
 
       // Overlap / Collision Check against booked_slots
       if (slotHours.length > 0) {
         const placeholders = slotHours.map(() => '?').join(', ');
         const overlapping = await db.execute({
-          sql: `SELECT bs.hourSlot, b.bookingCode FROM booked_slots bs
+          sql: `SELECT bs.hourSlot, b.bookingCode, b.clientName FROM booked_slots bs
                 JOIN bookings b ON bs.bookingId = b.id
                 WHERE bs.courtId = ?
                   AND bs.bookingDate = ?
@@ -334,10 +343,14 @@ export async function POST(request: Request) {
         });
 
         if (overlapping.rows.length > 0) {
+          const conflict = overlapping.rows[0] as any;
+          const conflictCode = conflict.bookingCode || 'Existing Booking';
+          const conflictClient = conflict.clientName ? ` (${conflict.clientName})` : '';
+          const conflictSlot = conflict.hourSlot || 'The selected time slot';
           return NextResponse.json(
             {
               success: false,
-              error: 'The selected time slot has already been reserved. Please pick another time or court.'
+              error: `Slot ${conflictSlot} on ${bookingDate} is already reserved by ${conflictCode}${conflictClient}. Please pick another time or court.`
             },
             { status: 409 }
           );
@@ -351,8 +364,24 @@ export async function POST(request: Request) {
     const id = 'book-' + crypto.randomUUID().slice(0, 8);
     const createdAt = new Date().toISOString();
 
-    let bookingStatus = paymentMethod === 'GCASH' ? 'PENDING' : 'CONFIRMED';
-    let paymentStatus = paymentMethod === 'GCASH' ? 'VERIFICATION_PENDING' : 'UNPAID';
+    let bookingStatus: 'CONFIRMED' | 'PENDING' | 'CANCELLED' = paymentMethod === 'GCASH' ? 'PENDING' : 'CONFIRMED';
+    let paymentStatus: 'UNPAID' | 'PAID' | 'VERIFICATION_PENDING' = paymentMethod === 'GCASH' ? 'VERIFICATION_PENDING' : 'UNPAID';
+
+    if (isAdmin) {
+      if (requestedPaymentStatus === 'PAID') {
+        paymentStatus = 'PAID';
+        bookingStatus = 'CONFIRMED';
+      } else if (requestedPaymentStatus === 'UNPAID') {
+        paymentStatus = 'UNPAID';
+        bookingStatus = 'CONFIRMED';
+      } else if (requestedPaymentStatus) {
+        paymentStatus = requestedPaymentStatus;
+        bookingStatus = requestedBookingStatus || 'CONFIRMED';
+      } else {
+        paymentStatus = 'PAID';
+        bookingStatus = 'CONFIRMED';
+      }
+    }
 
     const batchStatements: Array<{ sql: string; args: any[] }> = [
       {
@@ -373,7 +402,7 @@ export async function POST(request: Request) {
           courtId,
           clientName.trim(),
           (clientEmail || '').trim(),
-          clientPhone.trim(),
+          effectivePhone,
           bookingDate,
           finalStartTime,
           finalEndTime,
